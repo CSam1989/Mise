@@ -1,0 +1,15 @@
+# Enforce LF line endings at the git level so `dotnet format`'s end_of_line = lf
+# (.editorconfig) can never drift out of sync with what's actually committed —
+# without this, Windows checkouts with core.autocrlf=true can reintroduce CRLF
+# on new files and silently fail the CI format-check gate.
+* text=auto eol=lf
+
+# Binary assets — never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
