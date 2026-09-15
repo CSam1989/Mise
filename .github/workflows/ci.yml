@@ -38,6 +38,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
+      - name: Restore the executable bit on test apphosts
+        # actions/upload-artifact zips (and download-artifact unzips) without preserving
+        # Unix file permissions, so xUnit v3's own compiled apphost binary — the thing its
+        # out-of-process runner directly execve()s, not `dotnet exec <dll>` — comes back
+        # non-executable and fails with "Permission denied" before any test runs.
+        run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
       - run: >
           dotnet test tests/Mise.ArchitectureTests/Mise.ArchitectureTests.csproj
           -c Release --no-build --filter "Category=Architecture"
@@ -53,6 +59,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
+      - name: Restore the executable bit on test apphosts
+        run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
       - run: dotnet tool restore
       # Runs its own dotnet test (with --collect, so --no-build wouldn't apply cleanly
       # alongside coverlet.collector) and enforces the tiered coverage gate — see
@@ -71,6 +79,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
+      - name: Restore the executable bit on test apphosts
+        run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
       - run: >
           dotnet test tests/Mise.Client.UnitTests/Mise.Client.UnitTests.csproj
           -c Release --no-build
@@ -86,6 +96,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
+      - name: Restore the executable bit on test apphosts
+        run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
       # No services: block — Testcontainers starts and owns its own PostgreSQL container;
       # ubuntu-latest already has Docker running.
       - run: >
@@ -103,6 +115,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
+      - name: Restore the executable bit on test apphosts
+        run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
       - name: Install Playwright browsers
         shell: pwsh
         run: ./tests/Mise.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
