@@ -1,0 +1,20 @@
+# Build output — large, not needed for scanning
+**/bin/
+**/obj/
+
+# IDE / tooling state
+**/.vs/
+**/.vscode/
+**/.idea/
+
+# Test results
+**/TestResults/
+**/*.received.*
+
+# Publish output
+publish/
+
+# Node (if any)
+**/node_modules/
+
+# Keep .git so Gitleaks can scan commit history if needed

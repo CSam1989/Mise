@@ -1,0 +1,41 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Lets a PackageVersion entry here pin a *transitive* dependency's version
+         even when no project has a direct PackageReference to it. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!-- ASP.NET Core / Aspire -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+  </ItemGroup>
+  <!-- NOTE: Aspire.Hosting.AppHost is NOT listed here. The Aspire.AppHost.Sdk adds it as an
+       *implicit* PackageReference, and CPM refuses to centrally version an implicit reference
+       (NU1009) — its version is pinned by the Aspire.AppHost.Sdk version in Mise.AppHost.csproj
+       (currently 13.5.3) instead. -->
+
+  <!-- Mise.ServiceDefaults (OpenTelemetry / resilience / service discovery) -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.8.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
+  </ItemGroup>
+
+  <!-- Testing — versions verified against FamilySplit's Directory.Packages.props.
+       More test-tier packages (Moq, FluentAssertions, Testcontainers.PostgreSql,
+       bunit, Microsoft.Playwright, NetArchTest.Rules, Microsoft.Extensions.TimeProvider.Testing,
+       Npgsql.EntityFrameworkCore.PostgreSQL, Aspire.Hosting.PostgreSQL, etc.) are added
+       in Phase 1 and beyond, as each tier/module is actually scaffolded. -->
+  <ItemGroup>
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.5.3" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+</Project>

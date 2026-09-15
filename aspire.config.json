@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/Mise.AppHost/Mise.AppHost.csproj"
+  }
+}
