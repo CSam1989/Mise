@@ -93,10 +93,26 @@ called directly — no pipeline behaviors, no reflection-based discovery.
   localized nl-BE/en; text is not stable).
 - Integration tests assert on raw `JsonDocument`, never typed DTOs, so the wire contract is
   locked against an accidental silent change.
-- **Never `global using Bunit;`** in the bUnit test project — `Bunit.TestContext` collides with
-  xUnit v3's own `Xunit.TestContext`. Add `using Bunit;` locally per file that needs it.
+- **Never `global using Bunit;`** in the bUnit test project. Add `using Bunit;` locally per
+  file that needs it — originally because `Bunit.TestContext` collided with xUnit v3's own
+  `Xunit.TestContext`; bunit 2.9+ renamed its type to `BunitContext` specifically to end
+  that collision, but the project keeps usings local anyway rather than re-widen scope for
+  no benefit. Component tests derive from `Bunit.BunitContext` and call `Render<T>(...)`,
+  not the obsolete `TestContext`/`RenderComponent<T>`.
 - `because:` strings on FluentAssertions calls are full sentences stating the rule being
   enforced, not a restatement of the assertion.
+- **NetArchTest's `Types.InAssembly`/`InAssemblies`/`InCurrentDomain` silently ignore any
+  type whose namespace starts with `System` or `Microsoft`** (a hardcoded exclusion list in
+  the library itself, meant to keep BCL noise out of `InCurrentDomain()` scans) — this also
+  hides `Mise.ServiceDefaults`' own `Microsoft.Extensions.Hosting.Extensions` type, which
+  the Aspire template deliberately puts there. A rule that must actually see code in a
+  `Microsoft.*`-namespaced project (or any future one) cannot be built on NetArchTest's
+  fluent API — use `Mise.ArchitectureTests/IlCallSiteScanner.cs`'s direct Mono.Cecil scan
+  instead, as `CrossCuttingTests` does for the DateTime.Now and SaveChangesAsync rules.
+- **Mise.E2ETests runs Mise.Web on a real Kestrel socket**, not the in-memory `TestServer`
+  `WebApplicationFactory` normally substitutes — Playwright needs an actual port to navigate
+  to. This is .NET 10's `WebApplicationFactory<T>.UseKestrel(...)` / `.StartServer()` (see
+  `PlaywrightWebAppFixture.cs`), not a hand-rolled `dotnet run` subprocess.
 
 ## Keeping this file honest
 

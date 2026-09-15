@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Respawn" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Aliased: Mise.ApiService and Mise.AppHost each generate an implicit global::Program
+         type from top-level statements, and both are referenced here (AppHost for the
+         Projects.Mise_AppHost testing-host codegen, ApiService for WebApplicationFactory<T>)
+         — an unaliased pair is a compile error (CS0433, ambiguous 'Program'). -->
+    <ProjectReference Include="..\..\src\Mise.ApiService\Mise.ApiService.csproj" Aliases="ApiService" />
+    <ProjectReference Include="..\..\src\Mise.AppHost\Mise.AppHost.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -14,4 +14,8 @@
     <ProjectReference Include="..\Mise.Web\Mise.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+  </ItemGroup>
+
 </Project>

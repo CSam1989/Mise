@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Referenced so their assemblies are loaded and inspectable by NetArchTest.
+         A module's four projects get the same ProjectReference treatment here in the
+         same commit that adds the module (see ModuleRegistry.cs) — that is what keeps
+         rules 1-9 from staying vacuously true forever. -->
+    <ProjectReference Include="..\..\src\Mise.ApiService\Mise.ApiService.csproj" />
+    <ProjectReference Include="..\..\src\Mise.Web\Mise.Web.csproj" />
+    <ProjectReference Include="..\..\src\Mise.AppHost\Mise.AppHost.csproj" />
+    <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+    <ProjectReference Include="..\Mise.UnitTests\Mise.UnitTests.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="FluentAssertions" />
+    <Using Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+</Project>

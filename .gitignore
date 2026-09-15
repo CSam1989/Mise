@@ -489,6 +489,8 @@ $RECYCLE.BIN/
 # Mise-specific additions
 TestResults/
 coverage/
+coverage-raw/
+coverage-report/
 **/playwright-traces/
 .aspire/
 *.slnLaunch.user

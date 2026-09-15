@@ -1,0 +1,8 @@
+@namespace Mise.Client.UnitTests.TestComponents
+
+<p data-testid="greeting">Hello, @Name!</p>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = "";
+}

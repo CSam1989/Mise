@@ -3,6 +3,7 @@
     <Project Path="src/Mise.ApiService/Mise.ApiService.csproj" />
     <Project Path="src/Mise.AppHost/Mise.AppHost.csproj" />
     <Project Path="src/Mise.ServiceDefaults/Mise.ServiceDefaults.csproj" />
+    <Project Path="src/Mise.SharedKernel/Mise.SharedKernel.csproj" />
     <Project Path="src/Mise.Web/Mise.Web.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
@@ -10,8 +11,10 @@
   <Folder Name="/src/UI/">
   </Folder>
   <Folder Name="/tests/">
-    <!-- Physically still under src/Mise.Tests until Phase 1, where it becomes
-         tests/Mise.IntegrationTests alongside the other four test-tier projects. -->
-    <Project Path="src/Mise.Tests/Mise.Tests.csproj" />
+    <Project Path="tests/Mise.ArchitectureTests/Mise.ArchitectureTests.csproj" />
+    <Project Path="tests/Mise.Client.UnitTests/Mise.Client.UnitTests.csproj" />
+    <Project Path="tests/Mise.E2ETests/Mise.E2ETests.csproj" />
+    <Project Path="tests/Mise.IntegrationTests/Mise.IntegrationTests.csproj" />
+    <Project Path="tests/Mise.UnitTests/Mise.UnitTests.csproj" />
   </Folder>
 </Solution>

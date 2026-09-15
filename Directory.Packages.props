@@ -26,16 +26,54 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
   </ItemGroup>
 
-  <!-- Testing — versions verified against FamilySplit's Directory.Packages.props.
-       More test-tier packages (Moq, FluentAssertions, Testcontainers.PostgreSql,
-       bunit, Microsoft.Playwright, NetArchTest.Rules, Microsoft.Extensions.TimeProvider.Testing,
-       Npgsql.EntityFrameworkCore.PostgreSQL, Aspire.Hosting.PostgreSQL, etc.) are added
-       in Phase 1 and beyond, as each tier/module is actually scaffolded. -->
+  <!-- Testing — versions verified against FamilySplit's Directory.Packages.props. -->
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.Testing" Version="13.5.3" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <!-- Decision #8: this is a personal, non-commercial project, so FluentAssertions'
+         post-v8 Xceed Community Licence applies — pin held at exactly this version
+         rather than floated, since the license (not just the API) is being relied on. -->
+    <PackageVersion Include="FluentAssertions" Version="8.10.0" />
+    <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+  </ItemGroup>
+
+  <!-- Mise.IntegrationTests — Testcontainers-backed PostgreSQL, real ADO.NET (no EF Core
+       provider yet: no module has a DbContext until Phase 2, so Npgsql.EntityFrameworkCore.PostgreSQL
+       is deferred until something actually needs it). -->
+  <ItemGroup>
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Respawn" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+  </ItemGroup>
+
+  <!-- Mise.Client.UnitTests — bUnit against the shared RCL. -->
+  <ItemGroup>
+    <PackageVersion Include="bunit" Version="2.11.3" />
+    <!-- Transitive pin: bunit's own AngleSharp floor has historically trailed behind
+         GHSA-pgww-w46g-26qg's fix; CentralPackageTransitivePinningEnabled forces this
+         version regardless of what bunit itself references. -->
+    <PackageVersion Include="AngleSharp" Version="1.8.1" />
+  </ItemGroup>
+
+  <!-- Mise.E2ETests — Playwright against the running Blazor host. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Playwright" Version="1.62.0" />
+  </ItemGroup>
+
+  <!-- Deterministic time (non-negotiable rule in CLAUDE.md): FakeTimeProvider for every
+       tier that touches time-dependent rules. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+  </ItemGroup>
+
+  <!-- Aspire orchestration — Postgres resource added to Mise.AppHost in Phase 1 (1.7).
+       Pinned to the same Aspire release as Aspire.Hosting.Testing above. -->
+  <ItemGroup>
+    <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.5.3" />
   </ItemGroup>
 </Project>

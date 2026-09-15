@@ -38,3 +38,6 @@ app.MapRazorComponents<App>()
 app.MapDefaultEndpoints();
 
 app.Run();
+
+// Referenced by E2E tests via WebApplicationFactory<Program>.
+public partial class Program;

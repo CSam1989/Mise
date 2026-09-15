@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Mise.slnx
+      - run: dotnet build Mise.slnx -c Release --no-restore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          retention-days: 1
+          path: |
+            **/bin/Release/**
+            **/obj/Release/**
+
+  architecture-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+      - run: >
+          dotnet test tests/Mise.ArchitectureTests/Mise.ArchitectureTests.csproj
+          -c Release --no-build --filter "Category=Architecture"
+
+  unit-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+      - run: dotnet tool restore
+      # Runs its own dotnet test (with --collect, so --no-build wouldn't apply cleanly
+      # alongside coverlet.collector) and enforces the tiered coverage gate — see
+      # scripts/coverage.ps1's own header comment for what "gated" means today.
+      - shell: pwsh
+        run: ./scripts/coverage.ps1
+
+  client-unit-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+      - run: >
+          dotnet test tests/Mise.Client.UnitTests/Mise.Client.UnitTests.csproj
+          -c Release --no-build
+
+  integration-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+      # No services: block — Testcontainers starts and owns its own PostgreSQL container;
+      # ubuntu-latest already has Docker running.
+      - run: >
+          dotnet test tests/Mise.IntegrationTests/Mise.IntegrationTests.csproj
+          -c Release --no-build --filter "Category=Integration"
+
+  e2e-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+      - name: Install Playwright browsers
+        shell: pwsh
+        run: ./tests/Mise.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - run: >
+          dotnet test tests/Mise.E2ETests/Mise.E2ETests.csproj
+          -c Release --no-build --filter "Category=E2E"
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: '**/playwright-traces/**'
+          retention-days: 7
+
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Mise.slnx
+      - run: dotnet format Mise.slnx --verify-no-changes --no-restore --severity warn
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan
+        # Pinned by commit SHA, not a mutable tag: aquasecurity/trivy-action suffered two
+        # real supply-chain compromises in 2026 (repo takeover via a stolen PAT, then a
+        # second incident where every existing tag — 0.0.1 through 0.34.2 — was repointed
+        # at a malicious commit for several hours). v0.35.0 was the first clean release
+        # after remediation; v0.36.0 (pinned below) is the current release after that.
+        # Never relax this back to a bare version tag for this action.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-results.sarif
+      - name: Upload Trivy results to the Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — the .dockerignore already keeps .git so Gitleaks can scan it
+      # No GITLEAKS_LICENSE needed: this repo is under a personal GitHub account, and
+      # gitleaks-action's license requirement (since v2.0.0) applies only to repos owned by
+      # an organization account. Pinned by SHA for the same supply-chain reason as Trivy
+      # above — a third-party security-scanning action is exactly the kind of dependency
+      # worth pinning tightly, tag-mutation attacks on this class of action are a real,
+      # observed pattern this year, not a hypothetical.
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ci-gate:
+    if: always()
+    needs:
+      - build
+      - architecture-tests
+      - unit-tests
+      - client-unit-tests
+      - integration-tests
+      - e2e-tests
+      - format-check
+      - dependency-audit
+      - secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have succeeded or been skipped
+        run: |
+          echo '${{ toJson(needs) }}'
+          if echo '${{ join(needs.*.result, ' ') }}' | grep -qv -E '^(success|skipped| )*$'; then
+            echo "One or more required jobs did not succeed."
+            exit 1
+          fi
