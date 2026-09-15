@@ -155,12 +155,15 @@ jobs:
 
   dependency-audit:
     runs-on: ubuntu-latest
-    # security-events: write is required by codeql-action/upload-sarif — the default
-    # GITHUB_TOKEN is read-only unless a job explicitly asks for more, so without this the
-    # upload step fails with "Resource not accessible by integration" even though the scan
-    # itself succeeded. contents: read is the (otherwise-implicit) permission checkout needs.
+    # security-events: write is required by codeql-action/upload-sarif to actually upload
+    # results. It ALSO unconditionally calls GET /repos/{owner}/{repo}/actions/runs/{run_id}
+    # to resolve the SARIF analysis_key — a separate call needing actions: read — so without
+    # both, the step fails with "Resource not accessible by integration" even though the
+    # scan and SARIF validation both already succeeded. contents: read is the
+    # (otherwise-implicit) permission checkout needs.
     permissions:
       contents: read
+      actions: read
       security-events: write
     steps:
       - uses: actions/checkout@v4
