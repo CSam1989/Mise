@@ -129,6 +129,13 @@ jobs:
 
   dependency-audit:
     runs-on: ubuntu-latest
+    # security-events: write is required by codeql-action/upload-sarif — the default
+    # GITHUB_TOKEN is read-only unless a job explicitly asks for more, so without this the
+    # upload step fails with "Resource not accessible by integration" even though the scan
+    # itself succeeded. contents: read is the (otherwise-implicit) permission checkout needs.
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - name: Trivy filesystem scan
@@ -147,12 +154,18 @@ jobs:
           output: trivy-results.sarif
       - name: Upload Trivy results to the Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: trivy-results.sarif
 
   secret-scan:
     runs-on: ubuntu-latest
+    # gitleaks-action calls the GitHub API to comment on the PR with any finding, so it
+    # needs pull-requests: write in addition to the contents: read checkout needs — the
+    # same "default token is read-only" gap as dependency-audit's security-events: write.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
