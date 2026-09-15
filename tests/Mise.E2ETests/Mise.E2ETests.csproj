@@ -14,12 +14,19 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Mise.Web\Mise.Web.csproj" />
+    <!-- Aliased for the same reason Mise.IntegrationTests aliases it: an unaliased pair of
+         Mise.ApiService + Mise.Web would collide on the top-level-statements-generated
+         global::Program type (CS0433). -->
+    <ProjectReference Include="..\..\src\Mise.ApiService\Mise.ApiService.csproj" Aliases="ApiService" />
+    <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

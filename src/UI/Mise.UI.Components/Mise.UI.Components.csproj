@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PackageReference, never FrameworkReference: MAUI's net10.0-android/net10.0-windows
+         targets (Phase 14) have no ASP.NET Core shared framework on the device, so
+         FrameworkReference fails there with NETSDK1073 (docs/plan.md's MAUI gotcha). -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mise.UI.Abstractions\Mise.UI.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

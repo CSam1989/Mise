@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Deliberately zero PackageReference entries, same reasoning as Mise.SharedKernel: the
+       cross-cutting IAuditWriter port and AuditLogEntry shape must not force EF Core (or any
+       other package) onto every module's Application project that depends on this one. Each
+       module's own Infrastructure project owns the EF mapping for AuditLogEntry. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

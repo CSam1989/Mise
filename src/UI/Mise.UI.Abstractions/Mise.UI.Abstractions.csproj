@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Zero packages, zero project references: this is the whole seam RISK-03 depends on.
+       Mise.UI.Components references only this project, so the same RCL renders under
+       Blazor Server and MAUI Blazor Hybrid without knowing which transport is behind it. -->
+
+</Project>

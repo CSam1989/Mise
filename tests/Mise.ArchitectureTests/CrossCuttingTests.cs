@@ -1,9 +1,10 @@
 namespace Mise.ArchitectureTests;
 
 /// <summary>
-/// Rules 8, 10, 11, 12 from CLAUDE.md / docs/plan.md's tier-5 list. Rules 10 and 8 check
-/// real, existing assemblies today (the composition roots) — they are not vacuous. Rules
-/// 11 and 12 guard on an empty module-assembly list until Phase 2 registers a module.
+/// Rules 8, 10, 11, 12 from CLAUDE.md / docs/plan.md's tier-5 list, plus the logging-standard
+/// guardrails CLAUDE.md's "Logging" section describes. Rules 10, 8, and the Console/Debug ban
+/// check real, existing assemblies today (the composition roots) — they are not vacuous.
+/// The rest guard on an empty module-assembly list until a module registers.
 /// </summary>
 [Trait("Category", "Architecture")]
 public class CrossCuttingTests
@@ -18,7 +19,7 @@ public class CrossCuttingTests
         // namespace prefixes, which would silently skip Mise.ServiceDefaults' own
         // Microsoft.Extensions.Hosting.Extensions type entirely.
         var compositionRootNames = CompositionRoots.Assemblies.Select(a => a.GetName().Name).ToHashSet();
-        var candidates = new[] { "Mise.ServiceDefaults", "Mise.SharedKernel" }
+        var candidates = new[] { "Mise.ServiceDefaults", "Mise.SharedKernel", "Mise.SharedKernel.Infrastructure" }
             .Select(System.Reflection.Assembly.Load)
             .Where(a => !compositionRootNames.Contains(a.GetName().Name))
             .Concat(ModuleAssemblies.Domain)
@@ -98,5 +99,57 @@ public class CrossCuttingTests
 
         result.IsSuccessful.Should().BeTrue(
             because: "a mutating handler with no IAuditWriter dependency at all can never write an audit entry (belt half of the belt-and-suspenders audit-completeness guardrail).");
+    }
+
+    [Fact]
+    public void EveryCommandHandler_DependsOnAnILogger()
+    {
+        var applicationAssemblies = ModuleAssemblies.Application;
+        if (applicationAssemblies.Count == 0) return;
+
+        var result = Types.InAssemblies(applicationAssemblies)
+            .That()
+            .HaveNameEndingWith("CommandHandler")
+            .Should()
+            .MeetCustomRule(new HasConstructorParameterRule("ILogger"))
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            because: "CLAUDE.md's Logging standard applies everywhere — a handler with no ILogger dependency at all can never emit the structured log lines production debugging depends on.");
+    }
+
+    [Fact]
+    public void NoProductionAssembly_CallsConsoleOrDebugWriteDirectly()
+    {
+        // Every production assembly (composition roots included — there is no carve-out here
+        // the way there is for DateTime.Now, since ILogger is available everywhere a host's
+        // own code runs). Deliberately excludes test assemblies: Console output in a test is
+        // a normal debugging aid, not a production-logging-discipline violation.
+        var candidates = new[] { "Mise.ServiceDefaults", "Mise.SharedKernel", "Mise.SharedKernel.Infrastructure", "Mise.UI.Abstractions", "Mise.UI.Components" }
+            .Select(System.Reflection.Assembly.Load)
+            .Concat(CompositionRoots.Assemblies)
+            .Concat(ModuleAssemblies.Domain)
+            .Concat(ModuleAssemblies.Application)
+            .Concat(ModuleAssemblies.Infrastructure)
+            .Concat(ModuleAssemblies.Contracts)
+            .Distinct()
+            .ToArray();
+
+        var writeMethods = new (string DeclaringType, string MethodName)[]
+        {
+            ("System.Console", "WriteLine"),
+            ("System.Console", "Write"),
+            ("System.Diagnostics.Debug", "WriteLine"),
+            ("System.Diagnostics.Debug", "Write"),
+            ("System.Diagnostics.Debug", "Print"),
+        };
+
+        var offenders = writeMethods
+            .SelectMany(m => IlCallSiteScanner.FindTypesCalling(candidates, m.DeclaringType, m.MethodName))
+            .Distinct()
+            .ToArray();
+
+        offenders.Should().BeEmpty(
+            because: "structured logging via ILogger<T> is the standard (CLAUDE.md's Logging section) — a Console/Debug print never reaches the log pipeline, so it's invisible in production no matter how loud it looks locally.");
     }
 }

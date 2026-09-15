@@ -4,11 +4,19 @@
     <Project Path="src/Mise.AppHost/Mise.AppHost.csproj" />
     <Project Path="src/Mise.ServiceDefaults/Mise.ServiceDefaults.csproj" />
     <Project Path="src/Mise.SharedKernel/Mise.SharedKernel.csproj" />
+    <Project Path="src/Mise.SharedKernel.Infrastructure/Mise.SharedKernel.Infrastructure.csproj" />
+    <Project Path="src/Mise.MigrationService/Mise.MigrationService.csproj" />
     <Project Path="src/Mise.Web/Mise.Web.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Mise.Modules.Reservations.Domain/Mise.Modules.Reservations.Domain.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Reservations.Application/Mise.Modules.Reservations.Application.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Reservations.Infrastructure/Mise.Modules.Reservations.Infrastructure.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Reservations.Contracts/Mise.Modules.Reservations.Contracts.csproj" />
   </Folder>
   <Folder Name="/src/UI/">
+    <Project Path="src/UI/Mise.UI.Abstractions/Mise.UI.Abstractions.csproj" />
+    <Project Path="src/UI/Mise.UI.Components/Mise.UI.Components.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Mise.ArchitectureTests/Mise.ArchitectureTests.csproj" />

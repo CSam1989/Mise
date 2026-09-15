@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mise.ApiService\Mise.ApiService.csproj" />
+    <ProjectReference Include="..\Mise.MigrationService\Mise.MigrationService.csproj" />
     <ProjectReference Include="..\Mise.Web\Mise.Web.csproj" />
   </ItemGroup>
 

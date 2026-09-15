@@ -1,0 +1,24 @@
+@namespace Mise.UI.Components
+
+<form data-testid="form-create-reservation" @onsubmit="HandleSubmitAsync" @onsubmit:preventDefault="true">
+    <div class="form-field">
+        <label for="input-customer-name">Customer name</label>
+        <input id="input-customer-name" data-testid="input-customer-name" @bind="CustomerName" @bind:event="oninput" />
+    </div>
+
+    <div class="form-field">
+        <label for="input-party-size">Party size</label>
+        <input id="input-party-size" data-testid="input-party-size" type="number" @bind="PartySizeText" @bind:event="oninput" />
+        @if (FieldErrors.TryGetValue("PartySize", out var partySizeErrors))
+        {
+            <p data-testid="error-party-size" role="alert">@partySizeErrors[0]</p>
+        }
+    </div>
+
+    <div class="form-field">
+        <label for="input-reservation-date-time">Date and time</label>
+        <input id="input-reservation-date-time" data-testid="input-reservation-date-time" type="datetime-local" @bind="ReservationDateTimeLocal" />
+    </div>
+
+    <button type="submit" data-testid="btn-submit-reservation">Create reservation</button>
+</form>

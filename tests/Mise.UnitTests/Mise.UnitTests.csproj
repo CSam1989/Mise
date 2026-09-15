@@ -11,6 +11,8 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />
@@ -20,6 +22,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Domain\Mise.Modules.Reservations.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
   </ItemGroup>
 
 </Project>

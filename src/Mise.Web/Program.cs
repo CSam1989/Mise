@@ -1,4 +1,6 @@
+using Mise.UI.Abstractions;
 using Mise.Web.Components;
+using Mise.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,9 +13,14 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddOutputCache();
 
-// The typed HTTP client(s) implementing Mise.UI.Abstractions (ADR-004: this host
-// is an API client, not an in-process caller of the Application layer) are added
-// here from Phase 2 onward, once Mise.UI.Abstractions exists.
+// The typed HTTP client implementing Mise.UI.Abstractions (ADR-004: this host is an API
+// client, not an in-process caller of the Application layer). PlaceholderAuthTokenHandler is
+// Phase 2's stand-in for ADR-004's real sign-in flow — see its own doc comment.
+builder.Services.AddTransient<PlaceholderAuthTokenHandler>();
+builder.Services
+    .AddHttpClient<IReservationsClient, HttpReservationsClient>(client =>
+        client.BaseAddress = new Uri("https+http://apiservice"))
+    .AddHttpMessageHandler<PlaceholderAuthTokenHandler>();
 
 var app = builder.Build();
 

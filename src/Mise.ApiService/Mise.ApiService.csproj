@@ -8,10 +8,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Contracts\Mise.Modules.Reservations.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="FluentValidation" />
   </ItemGroup>
 
 </Project>

@@ -19,6 +19,7 @@
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Respawn" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
@@ -30,6 +31,8 @@
          — an unaliased pair is a compile error (CS0433, ambiguous 'Program'). -->
     <ProjectReference Include="..\..\src\Mise.ApiService\Mise.ApiService.csproj" Aliases="ApiService" />
     <ProjectReference Include="..\..\src\Mise.AppHost\Mise.AppHost.csproj" />
+    <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

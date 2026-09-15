@@ -68,13 +68,16 @@ public class ModuleBoundaryTests
 
         var infrastructureNames = infrastructureAssemblies.Select(a => a.GetName().Name!).ToArray();
 
-        // Everything in the solution except the composition root (Mise.ApiService) itself —
-        // no module's Domain/Application/Contracts, and neither host-adjacent library
-        // (Mise.Web, Mise.ServiceDefaults) is allowed to reference a module's Infrastructure.
+        // Everything in the solution except the two hosts allowed to wire up persistence
+        // directly — Mise.ApiService (the composition root) and Mise.MigrationService (runs
+        // a module's migrations, added Phase 2). No module's Domain/Application/Contracts,
+        // and no other host-adjacent library (Mise.Web, Mise.ServiceDefaults) may reference
+        // a module's Infrastructure.
+        var exemptHostNames = new[] { "Mise.ApiService", "Mise.MigrationService" };
         var candidateReferrers = ModuleAssemblies.Domain
             .Concat(ModuleAssemblies.Application)
             .Concat(ModuleAssemblies.Contracts)
-            .Concat(CompositionRoots.Assemblies.Where(a => a.GetName().Name != "Mise.ApiService"))
+            .Concat(CompositionRoots.Assemblies.Where(a => !exemptHostNames.Contains(a.GetName().Name)))
             .ToArray();
 
         var result = Types.InAssemblies(candidateReferrers)
@@ -83,7 +86,7 @@ public class ModuleBoundaryTests
             .GetResult();
 
         result.IsSuccessful.Should().BeTrue(
-            because: "only the composition root (Mise.ApiService) may reference a module's Infrastructure project.");
+            because: "only Mise.ApiService (the composition root) and Mise.MigrationService (runs a module's migrations) may reference a module's Infrastructure project.");
     }
 
     [Fact]

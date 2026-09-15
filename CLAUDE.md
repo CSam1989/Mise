@@ -60,12 +60,82 @@ depends on (a Postgres exclusion constraint, `xmin` concurrency, `pg_trgm` searc
 - **Query handlers and gateway implementations** are tested only against a real PostgreSQL
   (Testcontainers). Never `UseInMemoryDatabase` — an architecture rule forbids it in test code.
 
+## Cross-cutting infrastructure (`Mise.SharedKernel.Infrastructure`)
+
+`IAuditWriter` (and the `AuditLogEntry` shape it writes) lives here, not in any one module —
+every mutating command handler takes it as a constructor dependency, enforced at the
+architecture-test tier (`CrossCuttingTests.EveryCommandHandler_DependsOnSomethingImplementingIAuditWriter`,
+matched by parameter-type-name substring so it works before the type is even loaded). Phase 9
+adds the `SaveChangesInterceptor` guarantee that a handler holding the dependency actually
+*called* it; until then, calling it is on the handler author, same as every other rule not yet
+backed by a runtime check.
+
+`shared.audit_log_entry` and `shared.processed_operation` (the `OperationId` idempotency
+table — see the per-feature test contract's mutating-endpoint row) are **module-internal EF
+mappings today**, owned by whichever module's `Infrastructure` happens to need them first
+(Reservations, as of Phase 2) — not a shared DbContext or a reusable `IEntityTypeConfiguration`.
+The second module that needs either table is what decides whether to extract a shared
+implementation; don't build that abstraction speculatively before a second caller exists.
+
+## Placeholder auth spine (Phase 2 — replaced by StaffIdentity in Phase 3)
+
+`Mise.ApiService` runs a minimal JWT-bearer scheme (`Mise.ServiceDefaults.PlaceholderAuthDefaults`
+for the issuer/audience/config-key constants) with a global fallback policy that requires
+authentication by default — endpoints opt out with `AllowAnonymous` (`/health`, `/alive`) rather
+than opting in one by one. There is no login, no StaffIdentity, no roles yet: `Mise.Web` mints
+its own fixed system-identity token per outgoing call (`PlaceholderAuthTokenHandler`), so every
+request from the website authenticates as "Mise.Web," not a real staff member — that name is
+what ends up in `CreateReservationCommand.PerformedBy` and, from there, `AuditLogEntry.PerformedBySystemProcess`.
+The signing key is a secret Aspire parameter (`jwt-signing-key`, set once via
+`dotnet user-secrets set` from `src/Mise.AppHost` — see the README) shared by both hosts, never
+hardcoded. When StaffIdentity lands, it replaces the token-minting side of this (real sign-in,
+real per-staff claims) without needing to touch the validation side already wired here.
+
 ## No mediator library (ADR-005)
 
 Cross-module domain events go through a ~40-line hand-rolled `IDomainEventPublisher` /
 `IDomainEventHandler<T>` in `Mise.SharedKernel(.Infrastructure)`, not MediatR (which went
 commercial-license after v12) or any other package. Handlers are registered directly in DI and
 called directly — no pipeline behaviors, no reflection-based discovery.
+
+## Logging
+
+Structured logging is how this project gets debugged in production — there's no other
+window into a running `Mise.ApiService`/`Mise.MigrationService` once it's deployed. This is a
+project-wide standard, not a per-module choice.
+
+- **`ILogger<T>` via constructor injection only** — never `Console.WriteLine`, never
+  `Debug.WriteLine`/`Debug.Print`, never a static/ambient logger. Banned outright by an
+  architecture rule (`CrossCuttingTests` via `IlCallSiteScanner`, same mechanism as the
+  `DateTime.Now` ban) because a stray debug print is invisible until someone greps for it in
+  production and finds nothing, since it never went to the log pipeline at all.
+- **Use `[LoggerMessage]` source-generated partial methods**, not inline `_logger.LogX(...)`
+  calls, for anything logged from a command handler, gateway, or hot path. Source generation
+  avoids the allocation/boxing cost of a disabled log level actually being evaluated, and
+  gives every log line a stable `EventId` worth querying on in production. One-off logging in
+  a composition root's own `Program.cs` (startup diagnostics) can use the instance methods
+  directly — it runs once, performance doesn't matter there.
+- **Domain projects never log** — zero packages, same as the rest of Domain's isolation
+  (CLAUDE.md's module boundary table). A Domain type that "needs" to log is a sign the
+  decision belongs in the Application handler calling it, not the invariant itself.
+- **Never log PII** (`CustomerName`, phone, email, `Notes` — the same fields the charter's
+  retention/redaction corrections care about) **above `Debug`.** Production log aggregation is
+  a PII sink the charter never budgeted for; log the aggregate's id, not the customer's name.
+  `Debug` is acceptable since it's off in production by default — never `Information` or
+  higher for anything customer-identifying.
+- **Never log a secret** (a signing key, a token, a connection string, a password hash) at any
+  level, including `Trace`.
+
+### Level guidance
+
+| Level | Use for | Example |
+|---|---|---|
+| `Trace` | Per-call detail nobody needs unless actively chasing a specific bug; expect this off even in staging | Token minted for an outgoing call (never the token itself) |
+| `Debug` | Internal decision points worth seeing when reproducing a *reported* issue; off in production by default | A validation failure's field/rule; a gateway's idempotency-check outcome before it acts on it |
+| `Information` | Business-significant events an operator watches by default | A reservation was created (log the id, not the customer) |
+| `Warning` | Recoverable, but the kind of thing worth noticing a pattern in | An `OperationId` replay was detected (idempotent and correct, but if it's frequent, something upstream is retrying more than expected) |
+| `Error` | An operation failed and the caller was affected. Always the exception-overload (`LogError(ex, "…")`) — never format the exception into the message string | An unhandled exception at a boundary |
+| `Critical` | The process itself can't do its job | Startup failure: can't reach the database, required config missing |
 
 ## Per-feature test contract
 
@@ -112,7 +182,31 @@ called directly — no pipeline behaviors, no reflection-based discovery.
 - **Mise.E2ETests runs Mise.Web on a real Kestrel socket**, not the in-memory `TestServer`
   `WebApplicationFactory` normally substitutes — Playwright needs an actual port to navigate
   to. This is .NET 10's `WebApplicationFactory<T>.UseKestrel(...)` / `.StartServer()` (see
-  `PlaywrightWebAppFixture.cs`), not a hand-rolled `dotnet run` subprocess.
+  `PlaywrightWebAppFixture.cs`), not a hand-rolled `dotnet run` subprocess. `KestrelFactory<T>`
+  generalizes this to boot **two** real hosts at once (Mise.ApiService + Mise.Web) for a test
+  that needs the whole path, not just the UI — see `ReservationsE2EFixture.cs`. Point the
+  second host's outgoing service-discovery lookups at the first via
+  `UseSetting("services:{name}:{scheme}:0", url)`, the same config shape Aspire's own
+  `WithReference(...)` would inject at runtime.
+- **`WebApplicationFactory.WithWebHostBuilder(...)`'s `ConfigureAppConfiguration` callback
+  applies too late to override a config value a minimal-hosting `Program.cs` reads
+  synchronously before `builder.Build()`** (exactly what `Program.cs` does for the JWT signing
+  key and the `misedb` connection string) — the read happens before that extra source is
+  merged in, so the app still sees the missing/default value and throws. `UseSetting(key,
+  value)` doesn't have this problem: it writes directly into the settings dictionary consulted
+  from the start, and a later `UseSetting` call for the same key overwrites an earlier one
+  (which is how `ReservationsApiFixture` layers a real Testcontainers connection string over
+  `CustomWebApplicationFactory`'s own placeholder default). Prefer `UseSetting` over
+  `ConfigureAppConfiguration` for anything a minimal-hosting `Program.cs` might read early.
+- **A Blazor Web App page with `@rendermode InteractiveServer` (prerendering on) is briefly
+  interactive-*looking* before it's interactive** — the initial response is static SSR markup;
+  clicking a form's submit button in that window falls through to a native HTML form GET
+  instead of the C# handler, because no circuit is attached yet to intercept it. A real
+  Playwright click can land in that window (this is exactly what caught
+  `CreateReservation_HappyPath_AppearsInDayList` the first time it ran). Any page with a form
+  meant to be exercised by Playwright needs `@rendermode @(new InteractiveServerRenderMode(prerender: false))`
+  instead of the bare `InteractiveServer` — the form then simply isn't in the DOM until the
+  circuit is ready, which Playwright's own auto-waiting locators handle with no explicit wait.
 
 ## Keeping this file honest
 

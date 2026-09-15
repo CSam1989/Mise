@@ -18,6 +18,11 @@ public class WebTests
         var cancellationToken = TestContext.Current.CancellationToken;
 
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Mise_AppHost>(cancellationToken);
+        // "jwt-signing-key" has no default (docs/plan.md's Phase 2 placeholder auth spine
+        // deliberately never hardcodes it) — `aspire run` prompts for it interactively and
+        // persists to user secrets, but this non-interactive test graph needs it supplied
+        // directly, the same way a CI pipeline would set it as a real secret.
+        appHost.Configuration["Parameters:jwt-signing-key"] = "webtests-fixture-signing-key-value";
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Debug);

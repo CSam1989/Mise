@@ -8,6 +8,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\UI\Mise.UI.Abstractions\Mise.UI.Abstractions.csproj" />
+    <ProjectReference Include="..\UI\Mise.UI.Components\Mise.UI.Components.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
   </ItemGroup>
 
 </Project>

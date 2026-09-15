@@ -5,11 +5,12 @@
     (docs/plan.md decision #6): 90% line coverage, hard-gated, on every *.Domain and
     *.Application assembly; everything else is reported but never gates the build.
 
-    Today there are zero *.Domain/*.Application assemblies (Phase 2 adds the first
-    module), so the gate has nothing to check yet and passes by construction — not
-    because 90% was met, but because there is nothing in scope. It starts enforcing the
-    moment a module exists, which is the point: the floor is real from day one instead of
-    being retrofitted once there's already a gap to hide.
+    -filefilters:-*.g.cs excludes source-generated files (notably [LoggerMessage]'s
+    generated method bodies, CLAUDE.md's "Logging" standard) from both reports. That code
+    is Microsoft's source generator's responsibility to be correct, not something a
+    handler's own unit test should need to exercise just to keep the gate green — without
+    this, every handler that adds a log call would otherwise silently eat into its own
+    coverage number for a branch (logger.IsEnabled(...)) nobody actually wrote.
 #>
 [CmdletBinding()]
 param(
@@ -37,14 +38,16 @@ $reportGenerator = 'dotnet-reportgenerator-globaltool'
 & dotnet tool run reportgenerator `
     "-reports:$rawDir/**/coverage.cobertura.xml" `
     "-targetdir:$reportDir/all" `
-    '-reporttypes:Cobertura;MarkdownSummaryGithub' | Out-Host
+    '-reporttypes:Cobertura;MarkdownSummaryGithub' `
+    '-filefilters:-*.g.cs' | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'reportgenerator failed (all assemblies)' }
 
 & dotnet tool run reportgenerator `
     "-reports:$rawDir/**/coverage.cobertura.xml" `
     "-targetdir:$reportDir/gated" `
     '-reporttypes:Cobertura' `
-    '-assemblyfilters:+*.Domain;+*.Application' | Out-Host
+    '-assemblyfilters:+*.Domain;+*.Application' `
+    '-filefilters:-*.g.cs' | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'reportgenerator failed (gated assemblies)' }
 
 $summaryPath = Join-Path $reportDir 'all/SummaryGithub.md'

@@ -1,0 +1,39 @@
+@page "/reservations"
+@* prerender: false — with prerendering on, the form's markup is served statically before
+   the SignalR circuit attaches, so a click in that window falls through to a native HTML
+   form GET instead of HandleSubmitAsync (this is exactly what CreateReservation_HappyPath_
+   AppearsInDayList caught: a real Playwright click landing before interactivity was wired
+   up). Disabling prerendering means the form simply isn't in the DOM until the circuit is
+   ready, which Playwright's own auto-waiting locators handle for free. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Mise.UI.Components
+@using Mise.UI.Abstractions
+@inject IReservationsClient ReservationsClient
+
+<PageTitle>Reservations</PageTitle>
+
+<h1 data-testid="reservations-heading">Reservations</h1>
+
+<ReservationForm ReservationsClient="ReservationsClient" OnCreated="HandleCreated" />
+
+<h2>Today's reservations</h2>
+
+@if (_createdReservations.Count == 0)
+{
+    <p data-testid="day-list-empty">No reservations yet.</p>
+}
+else
+{
+    <ul data-testid="day-list">
+        @foreach (var reservation in _createdReservations)
+        {
+            <li data-testid="reservation-row-@reservation.Id">@reservation.CustomerName — party of @reservation.PartySize</li>
+        }
+    </ul>
+}
+
+@code {
+    private readonly List<ReservationDto> _createdReservations = [];
+
+    private void HandleCreated(ReservationDto reservation) => _createdReservations.Add(reservation);
+}

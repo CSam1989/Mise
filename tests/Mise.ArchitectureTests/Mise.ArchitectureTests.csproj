@@ -25,8 +25,19 @@
     <ProjectReference Include="..\..\src\Mise.ApiService\Mise.ApiService.csproj" />
     <ProjectReference Include="..\..\src\Mise.Web\Mise.Web.csproj" />
     <ProjectReference Include="..\..\src\Mise.AppHost\Mise.AppHost.csproj" />
+    <ProjectReference Include="..\..\src\Mise.MigrationService\Mise.MigrationService.csproj" />
     <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\src\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\UI\Mise.UI.Abstractions\Mise.UI.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\UI\Mise.UI.Components\Mise.UI.Components.csproj" />
+    <!-- A module's four projects get the same treatment in the same commit that adds the
+         module (see ModuleRegistry.cs) — that is what keeps rules 1-9 from staying
+         vacuously true forever. -->
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Domain\Mise.Modules.Reservations.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Contracts\Mise.Modules.Reservations.Contracts.csproj" />
     <ProjectReference Include="..\Mise.UnitTests\Mise.UnitTests.csproj" />
   </ItemGroup>
 
