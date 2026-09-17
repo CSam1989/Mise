@@ -7,6 +7,8 @@ using Mise.Modules.Reservations.Infrastructure;
 using Mise.Modules.Reservations.Infrastructure.Persistence;
 using Mise.Modules.StaffIdentity.Infrastructure;
 using Mise.Modules.StaffIdentity.Infrastructure.Persistence;
+using Mise.Modules.Tables.Infrastructure;
+using Mise.Modules.Tables.Infrastructure.Persistence;
 
 // One-shot worker: migrates every module's DbContext, then exits. Mise.AppHost waits on
 // this (WaitForCompletion) before starting Mise.ApiService — schema-readiness is a
@@ -22,6 +24,7 @@ var connectionString = builder.Configuration.GetConnectionString("misedb")
 
 builder.Services.AddReservationsPersistence(connectionString);
 builder.Services.AddStaffIdentityPersistence(connectionString);
+builder.Services.AddTablesPersistence(connectionString);
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();
@@ -47,6 +50,14 @@ try
     logger.LogInformation("Applying migrations for {DbContext}...", nameof(StaffIdentityDbContext));
     await staffIdentityDb.Database.MigrateAsync();
     logger.LogInformation("Migrations for {DbContext} applied.", nameof(StaffIdentityDbContext));
+
+    // Tables is a second non-owner of shared.processed_operation/audit_log_entry (same
+    // isOwner: false pattern as StaffIdentity) — it only needs to run after Reservations, so
+    // its position relative to StaffIdentity above is arbitrary.
+    var tablesDb = scope.ServiceProvider.GetRequiredService<TablesDbContext>();
+    logger.LogInformation("Applying migrations for {DbContext}...", nameof(TablesDbContext));
+    await tablesDb.Database.MigrateAsync();
+    logger.LogInformation("Migrations for {DbContext} applied.", nameof(TablesDbContext));
 
     // Bootstraps the one account that can ever sign in before any Manager exists to register
     // further staff — RegisterStaffCommandHandler's endpoint is Manager-only, so without this

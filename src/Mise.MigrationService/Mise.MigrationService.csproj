@@ -11,6 +11,7 @@
     <ProjectReference Include="..\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Infrastructure\Mise.Modules.StaffIdentity.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Tables.Infrastructure\Mise.Modules.Tables.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

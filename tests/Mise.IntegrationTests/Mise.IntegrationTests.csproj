@@ -38,6 +38,7 @@
     <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Infrastructure\Mise.Modules.StaffIdentity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Tables.Infrastructure\Mise.Modules.Tables.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -6,12 +6,20 @@ using Microsoft.IdentityModel.Tokens;
 using Mise.ApiService;
 using Mise.ApiService.Reservations;
 using Mise.ApiService.Staff;
+using Mise.ApiService.Tables;
 using Mise.Modules.Reservations.Application.CreateReservation;
 using Mise.Modules.Reservations.Infrastructure;
 using Mise.Modules.StaffIdentity.Application.Login;
 using Mise.Modules.StaffIdentity.Application.RegisterStaff;
 using Mise.Modules.StaffIdentity.Domain;
 using Mise.Modules.StaffIdentity.Infrastructure;
+using Mise.Modules.Tables.Application.CreateSection;
+using Mise.Modules.Tables.Application.CreateTable;
+using Mise.Modules.Tables.Application.DeactivateSection;
+using Mise.Modules.Tables.Application.DeactivateTable;
+using Mise.Modules.Tables.Application.UpdateSection;
+using Mise.Modules.Tables.Application.UpdateTable;
+using Mise.Modules.Tables.Infrastructure;
 using Mise.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +33,9 @@ builder.AddServiceDefaults();
 // catch-all every other exception falls through to (logged, generic 500 — never a leaked
 // stack trace or exception message in the response).
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
+builder.Services.AddExceptionHandler<PreconditionRequiredExceptionHandler>();
+builder.Services.AddExceptionHandler<ConcurrencyConflictExceptionHandler>();
+builder.Services.AddExceptionHandler<DomainRuleViolationExceptionHandler>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
@@ -79,6 +90,18 @@ builder.Services.AddScoped<IValidator<LoginCommand>, LoginCommandValidator>();
 builder.Services.AddScoped<RegisterStaffCommandHandler>();
 builder.Services.AddScoped<IValidator<RegisterStaffCommand>, RegisterStaffCommandValidator>();
 
+builder.Services.AddTablesPersistence(reservationsConnectionString);
+builder.Services.AddScoped<CreateSectionCommandHandler>();
+builder.Services.AddScoped<IValidator<CreateSectionCommand>, CreateSectionCommandValidator>();
+builder.Services.AddScoped<UpdateSectionCommandHandler>();
+builder.Services.AddScoped<IValidator<UpdateSectionCommand>, UpdateSectionCommandValidator>();
+builder.Services.AddScoped<DeactivateSectionCommandHandler>();
+builder.Services.AddScoped<CreateTableCommandHandler>();
+builder.Services.AddScoped<IValidator<CreateTableCommand>, CreateTableCommandValidator>();
+builder.Services.AddScoped<UpdateTableCommandHandler>();
+builder.Services.AddScoped<IValidator<UpdateTableCommand>, UpdateTableCommandValidator>();
+builder.Services.AddScoped<DeactivateTableCommandHandler>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -100,6 +123,8 @@ app.MapGet("/", () => "Mise API service is running.");
 app.MapReservationsEndpoints();
 app.MapAuthEndpoints();
 app.MapStaffEndpoints();
+app.MapSectionsEndpoints();
+app.MapTablesEndpoints();
 
 app.MapDefaultEndpoints();
 

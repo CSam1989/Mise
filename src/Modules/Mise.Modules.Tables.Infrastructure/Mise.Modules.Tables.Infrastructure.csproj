@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <!-- Already available transitively via EF Core, but declared explicitly since this
+         project uses ILogger<T>/[LoggerMessage] directly (CLAUDE.md's CPM philosophy: don't
+         rely on an undeclared transitive dependency for something referenced by name). -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <!-- Design-time only (dotnet-ef migrations add) — never needed at runtime. -->
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Own Domain + Application, Mise.SharedKernel(.Infrastructure) — no other module's
+       anything (CLAUDE.md's boundary table). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Mise.Modules.Tables.Domain\Mise.Modules.Tables.Domain.csproj" />
+    <ProjectReference Include="..\Mise.Modules.Tables.Application\Mise.Modules.Tables.Application.csproj" />
+    <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Mise.SharedKernel.Persistence\Mise.SharedKernel.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

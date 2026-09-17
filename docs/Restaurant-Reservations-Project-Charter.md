@@ -414,6 +414,7 @@ Revisit if conflict frequency in practice is high (wifi worse than expected) —
 | Id | uuid | NO | PK |
 | Name | varchar(50) | NO | e.g. "Patio", "Main Room" |
 | DisplayOrder | int | NO | |
+| IsActive | boolean | NO | soft-deactivate, same pattern as `Table.IsActive` — added by charter correction #12 (plan.md); FR-07 requires deactivating sections but the original data model omitted the column |
 
 ### Entity: Reservation
 

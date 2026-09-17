@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using Mise.Modules.Reservations.Infrastructure.Persistence;
 using Mise.Modules.StaffIdentity.Infrastructure;
 using Mise.Modules.StaffIdentity.Infrastructure.Persistence;
+using Mise.Modules.Tables.Infrastructure.Persistence;
 using Mise.ServiceDefaults;
 using Testcontainers.PostgreSql;
 
@@ -55,6 +56,9 @@ public sealed class MiseApiFixture : IAsyncLifetime
 
         var staffIdentityDb = scope.ServiceProvider.GetRequiredService<StaffIdentityDbContext>();
         await staffIdentityDb.Database.MigrateAsync(TestContext.Current.CancellationToken);
+
+        var tablesDb = scope.ServiceProvider.GetRequiredService<TablesDbContext>();
+        await tablesDb.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         var seeder = scope.ServiceProvider.GetRequiredService<StaffIdentitySeeder>();
         await seeder.EnsureManagerExistsAsync(

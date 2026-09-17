@@ -169,6 +169,75 @@ knowing before touching this code:
   there. Every future typed client that needs the caller's token follows
   `HttpReservationsClient`'s pattern, not a shared `DelegatingHandler`.
 
+## Tables & Sections (Phase 4 — optimistic concurrency, and two charter corrections)
+
+`Mise.Modules.Tables` follows `CreateReservationCommandHandler`'s shape exactly for its six
+command handlers (`Create`/`Update`/`Deactivate` × `Section`/`Table`) — validate-then-throw,
+gateway mocked in unit tests, `OperationId` idempotency on every one of them (not just Create;
+CLAUDE.md's mutating-endpoint contract doesn't carve out an exception for Update/Deactivate, and
+a client retrying a PATCH after a dropped response needs the same replay-safety a retried POST
+gets). Two things this module had to decide that no earlier module needed to:
+
+- **`Section.IsActive` (docs/plan.md correction #12) and `Table.Deactivate()`'s Reserved/Occupied
+  guard (correction #13)** are the two gaps FR-07/US-04 forced — see those correction entries for
+  the full reasoning. The load-bearing distinction between them: `Section`'s "still has active
+  tables" check needs a cross-aggregate query (`ITablesData.AnyActiveTablesInSectionAsync`), so it
+  lives in `DeactivateSectionCommandHandler` as a field-scoped `ValidationException` (same shape
+  as `RegisterStaffCommandHandler`'s taken-username check, 400); `Table`'s guard only reads its
+  own `Status` field, so it's a genuine Domain invariant that throws the new
+  `Mise.SharedKernel.DomainRuleViolationException` instead (mapped to 409 by
+  `DomainRuleViolationExceptionHandler`) — a business-rule violation self-contained within one
+  aggregate is a Domain concern; one that needs a database query to answer is an Application
+  concern. Don't conflate the two the next time this distinction comes up.
+- **Optimistic concurrency (docs/plan.md correction #5) lands here for `Table`** (not `Section` —
+  the charter never named it as concurrency-tracked, and last-write-wins is an accepted,
+  documented scope decision for it) and is the first real implementation of the ETag/If-Match
+  pattern the plan named back in Phase 0. The pieces:
+  - **No `UseXminAsConcurrencyToken()` helper exists** in
+    `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3 (removed/renamed since the charter's ADR-001
+    Amendment 1 was written against an older version). Instead, declare an ordinary `uint` shadow
+    property and call the **standard, provider-portable** `.Property<uint>("Version").IsRowVersion()`
+    — Npgsql's own `NpgsqlPostgresModelFinalizingConvention.ProcessRowVersionProperty` convention
+    silently detects any `uint`+`IsRowVersion()` property and maps it to the physical `xmin`
+    system column regardless of the shadow property's own name (`TableConfiguration.cs`). No
+    stored column is created — confirm this by reading the generated migration, which lists
+    `xmin` as a column but the SQL generator no-ops it (Npgsql's own
+    `NpgsqlMigrationsSqlGenerator.SystemColumnNames` special-case).
+  - **`Mise.ApiService.ETag`** is the only place that formats/parses the wire value (a quoted
+    decimal string, e.g. `"5"`) — Application/Domain never see anything but the raw `uint`
+    (`ITablesData`'s `TableWithVersion`/`TableSaveResult`).
+  - **Missing/malformed `If-Match` on `PATCH /api/tables/{id}` or `.../deactivate`** → the
+    endpoint itself throws `PreconditionRequiredException` (an `Mise.ApiService`-internal type —
+    unlike `ConcurrencyConflictException`, it never needs to cross out of the host, since parsing
+    a request header is a pure HTTP-shape concern) → `PreconditionRequiredExceptionHandler` → 428.
+  - **A stale `If-Match`** → the gateway's `SaveWithConcurrencyCheckAsync` sets the tracked
+    entity's `Property<uint>("Version").OriginalValue` to the caller's claimed version before
+    `SaveChangesAsync`; Postgres's own `UPDATE ... WHERE xmin = @original` affecting zero rows
+    surfaces as `DbUpdateConcurrencyException`, caught and turned into
+    `TableSaveOutcome.VersionMismatch` → the handler throws
+    `Mise.SharedKernel.ConcurrencyConflictException` → `ConcurrencyConflictExceptionHandler` → 409.
+  - **The current version on a 409 travels in the JSON body's `currentVersion` extension field,
+    never a response `ETag` header.** ASP.NET Core's `ExceptionHandlerMiddleware` registers an
+    `OnStarting` callback (`ClearCacheHeaders`) on **every** response it processes that
+    unconditionally strips `ETag` (and sets `Cache-Control`/`Pragma`/`Expires`) as anti-caching
+    hardening for error pages — it runs after any `IExceptionHandler`, so setting the header
+    inside one is silently undone before the response is sent. This only affects
+    exception-handler responses: the success path's `Results.Ok`/`Results.Created` ETag
+    (`TablesEndpoints.cs`) is unaffected, since no exception was thrown for those. Don't
+    rediscover this the hard way the next time a 4xx/5xx response needs a custom header.
+  - **A non-existent `SectionId`/`TableId` on create/update is a field-scoped 400, not a raw
+    FK-violation 500** — `CreateTableCommandHandler`/`UpdateTableCommandHandler` call
+    `ISectionsData.GetSectionByIdAsync` before touching `ITablesData`, precisely because the DB's
+    own FK constraint (`Table.SectionId → Section.Id`, `DeleteBehavior.Restrict`) is the only
+    other thing that would catch it, and it would surface as an unhandled `DbUpdateException`.
+- **`GetActiveSectionsAsync`/`GetFloorPlanAsync` are plain reads injected directly into their
+  endpoints** (`ISectionsData`/`ITablesData`, no query-handler class) — no query-handler
+  abstraction exists anywhere yet to mirror, and neither read has logic beyond a gateway call and
+  a DTO projection. Introduce one for real once a future read actually needs it.
+- **No Blazor UI for Tables/Sections yet** — same deferral Phase 3 made for staff management
+  ("registering staff is API-only ... deferred to Phase 10"). Proven at the Architecture/Unit/
+  Integration tiers only; the RCL screens land with Phase 10's shared-component build-out.
+
 ## No mediator library (ADR-005)
 
 Cross-module domain events go through a ~40-line hand-rolled `IDomainEventPublisher` /

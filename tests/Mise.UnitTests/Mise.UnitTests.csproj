@@ -27,6 +27,8 @@
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Domain\Mise.Modules.StaffIdentity.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Application\Mise.Modules.StaffIdentity.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Tables.Domain\Mise.Modules.Tables.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Tables.Application\Mise.Modules.Tables.Application.csproj" />
   </ItemGroup>
 
 </Project>

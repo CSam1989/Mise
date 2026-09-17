@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Contracts projects hold interfaces, DTOs, and events only — no EF types, no handlers
+       (ModuleBoundaryTests.Contracts_ContainOnlyInterfacesDtosAndEvents). May reference
+       Mise.SharedKernel only; never its own module's Domain/Application/Infrastructure. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

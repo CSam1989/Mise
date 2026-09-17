@@ -22,6 +22,12 @@
     <Project Path="src/Modules/Mise.Modules.StaffIdentity.Domain/Mise.Modules.StaffIdentity.Domain.csproj" />
     <Project Path="src/Modules/Mise.Modules.StaffIdentity.Infrastructure/Mise.Modules.StaffIdentity.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Tables/">
+    <Project Path="src/Modules/Mise.Modules.Tables.Application/Mise.Modules.Tables.Application.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Tables.Contracts/Mise.Modules.Tables.Contracts.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Tables.Domain/Mise.Modules.Tables.Domain.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Tables.Infrastructure/Mise.Modules.Tables.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/UI/">
     <Project Path="src/UI/Mise.UI.Abstractions/Mise.UI.Abstractions.csproj" />
     <Project Path="src/UI/Mise.UI.Components/Mise.UI.Components.csproj" />

@@ -19,6 +19,13 @@
     <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Application\Mise.Modules.StaffIdentity.Application.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Contracts\Mise.Modules.StaffIdentity.Contracts.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Infrastructure\Mise.Modules.StaffIdentity.Infrastructure.csproj" />
+    <!-- Domain referenced explicitly since TablesEndpoints.cs names TableStatus, Section and
+         Table directly (CLAUDE.md's CPM philosophy — same reasoning as StaffIdentity.Domain
+         above). -->
+    <ProjectReference Include="..\Modules\Mise.Modules.Tables.Domain\Mise.Modules.Tables.Domain.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Tables.Application\Mise.Modules.Tables.Application.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Tables.Contracts\Mise.Modules.Tables.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Tables.Infrastructure\Mise.Modules.Tables.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
