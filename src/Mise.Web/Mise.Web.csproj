@@ -12,8 +12,8 @@
     <ProjectReference Include="..\UI\Mise.UI.Components\Mise.UI.Components.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
-  </ItemGroup>
+  <!-- System.IdentityModel.Tokens.Jwt was Phase 2's placeholder token-minting dependency —
+       Mise.Web no longer mints tokens at all (StaffIdentity's JwtTokenIssuer does, Phase 3),
+       so it's removed rather than left unused. -->
 
 </Project>

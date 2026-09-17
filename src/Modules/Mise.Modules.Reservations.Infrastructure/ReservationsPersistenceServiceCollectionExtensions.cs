@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Mise.Modules.Reservations.Application.Ports;
 using Mise.Modules.Reservations.Infrastructure.Persistence;
 using Mise.SharedKernel.Infrastructure;
+using Mise.SharedKernel.Persistence;
 
 namespace Mise.Modules.Reservations.Infrastructure;
 
@@ -20,7 +21,7 @@ public static class ReservationsPersistenceServiceCollectionExtensions
                 npgsql.MigrationsHistoryTable("__ef_migrations_history", "reservations")));
 
         services.AddScoped<IReservationsData, ReservationsData>();
-        services.AddScoped<IAuditWriter, AuditWriter>();
+        services.AddScoped<IAuditWriter, AuditWriter<ReservationsDbContext>>();
 
         return services;
     }

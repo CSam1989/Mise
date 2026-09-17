@@ -27,6 +27,10 @@ in-process) and **ADR-005** (no MediatR or other mediator library — see below)
 - **No `Thread.Sleep` / `Task.Delay` in any test project.** Wait on a `TaskCompletionSource`,
   use `FakeTimeProvider.Advance`, or a framework's own wait primitive (bUnit
   `WaitForAssertion`, Playwright `Expect(...)`).
+- **Every boundary that can fail unexpectedly catches it, logs it, and shows the user something
+  short of a crash or a leaked stack trace.** Not just the expected-failure paths (a validation
+  rejection, wrong credentials) — the *unexpected* ones (the API is unreachable, a bug, a DB
+  outage). See "Error handling" below for what this looks like at each layer.
 
 ## Module boundaries (enforced by `Mise.ArchitectureTests`, not just this doc)
 
@@ -37,7 +41,7 @@ Each of the four modules (Reservations, Tables, StaffIdentity, Scheduling) is fo
 |---|---|---|
 | `{M}.Domain` | `Mise.SharedKernel` only | Anything else — no EF, no ASP.NET, no other module |
 | `{M}.Application` | own `.Domain`, `Mise.SharedKernel`, **other modules' `.Contracts`** | any other module's `.Domain`/`.Application`/`.Infrastructure`; EF Core; ASP.NET Core |
-| `{M}.Infrastructure` | own `.Domain` + `.Application`, `Mise.SharedKernel*` | another module's anything |
+| `{M}.Infrastructure` | own `.Domain` + `.Application`, `Mise.SharedKernel*`, `Mise.ServiceDefaults` (see below) | another module's anything |
 | `{M}.Contracts` | `Mise.SharedKernel` only | its own module's `.Domain`/`.Application`/`.Infrastructure` |
 | `Mise.UI.Components` | `Mise.UI.Abstractions` only | any module, any host project — this is what lets the same components render under both Blazor Server and MAUI |
 | `Mise.Web` / the MAUI head | `Mise.UI.Components`, `Mise.UI.Abstractions` | any module project directly |
@@ -45,6 +49,15 @@ Each of the four modules (Reservations, Tables, StaffIdentity, Scheduling) is fo
 A new module gets registered in the architecture-test assembly registry in the same commit —
 a rule fails if the registry and the host's real project references disagree, so a module can't
 silently escape every other boundary rule.
+
+`{M}.Infrastructure → Mise.ServiceDefaults` is a deliberate, narrow allowance added in Phase 3:
+`Mise.ServiceDefaults` is a leaf shared library (no module, no EF, no host-specific state), and
+whichever code mints or validates a JWT needs the same `Issuer`/`Audience`/`SigningKeyConfigKey`
+constants (`JwtAuthDefaults`) regardless of which side of the request it's on — first
+`Mise.Web`'s now-deleted placeholder token handler, now `StaffIdentity.Infrastructure`'s
+`JwtTokenIssuer`. Duplicating those three literal strings per consumer is a silent-drift risk
+(mint and validate disagree, tokens fail with a confusing 401); referencing the one place they
+live is not.
 
 ## The testable seam
 
@@ -71,25 +84,90 @@ adds the `SaveChangesInterceptor` guarantee that a handler holding the dependenc
 backed by a runtime check.
 
 `shared.audit_log_entry` and `shared.processed_operation` (the `OperationId` idempotency
-table — see the per-feature test contract's mutating-endpoint row) are **module-internal EF
-mappings today**, owned by whichever module's `Infrastructure` happens to need them first
-(Reservations, as of Phase 2) — not a shared DbContext or a reusable `IEntityTypeConfiguration`.
-The second module that needs either table is what decides whether to extract a shared
-implementation; don't build that abstraction speculatively before a second caller exists.
+table — see the per-feature test contract's mutating-endpoint row) moved to
+**`Mise.SharedKernel.Persistence`** in Phase 3, when StaffIdentity became the second module
+needing them (Reservations, as of Phase 2, was the first) — CLAUDE.md's own earlier text said
+this is exactly when to decide, and the shape of the decision was forced by one constraint:
+`Mise.SharedKernel.Infrastructure` (where `IAuditWriter`/`AuditLogEntry` live) **must stay
+EF-free forever**, because every module's `Application` project references it directly for
+`IAuditWriter` — adding EF Core there would leak EF onto every `Application` project
+transitively, exactly what the boundary table forbids. `Mise.SharedKernel.Persistence` is the
+new, separate EF-aware project that holds the entity (`ProcessedOperation`), its
+`IEntityTypeConfiguration`s, an `ApplySharedKernelConfigurations(isOwner:)` `ModelBuilder`
+extension, and a generic `AuditWriter<TDbContext> : IAuditWriter` — referenced only by module
+`Infrastructure` projects, never `Application` (that reference stays to
+`Mise.SharedKernel.Infrastructure` alone).
 
-## Placeholder auth spine (Phase 2 — replaced by StaffIdentity in Phase 3)
+Exactly one module's migration may contain the `CreateTable` calls for these two physical
+tables (`isOwner: true`, still Reservations); every other module maps the same tables with
+`isOwner: false`, which sets EF's `ExcludeFromMigrations()` on them — its own migration then
+only reads/writes rows, never tries to re-create a table that already exists. This makes
+migration **order** load-bearing: `Mise.MigrationService` must run the owner's migration
+before any non-owner's (see its `Program.cs` comment). A third module doing this differently
+(or a fourth, non-owning module skipping the `isOwner: false` flag) is exactly the kind of
+mistake that surfaces as "relation already exists" the first time all migrations run together
+against a clean database — `MigrationHistoryTests.EachModule_HasItsOwnDistinctMigrationsHistoryTable`
+is the regression test for the *symptom* (two distinct history tables), not a guarantee against
+this specific mistake; there is no architecture-test guardrail for it yet.
 
-`Mise.ApiService` runs a minimal JWT-bearer scheme (`Mise.ServiceDefaults.PlaceholderAuthDefaults`
-for the issuer/audience/config-key constants) with a global fallback policy that requires
-authentication by default — endpoints opt out with `AllowAnonymous` (`/health`, `/alive`) rather
-than opting in one by one. There is no login, no StaffIdentity, no roles yet: `Mise.Web` mints
-its own fixed system-identity token per outgoing call (`PlaceholderAuthTokenHandler`), so every
-request from the website authenticates as "Mise.Web," not a real staff member — that name is
-what ends up in `CreateReservationCommand.PerformedBy` and, from there, `AuditLogEntry.PerformedBySystemProcess`.
-The signing key is a secret Aspire parameter (`jwt-signing-key`, set once via
-`dotnet user-secrets set` from `src/Mise.AppHost` — see the README) shared by both hosts, never
-hardcoded. When StaffIdentity lands, it replaces the token-minting side of this (real sign-in,
-real per-staff claims) without needing to touch the validation side already wired here.
+## Staff auth spine (StaffIdentity, Phase 3 — real sign-in)
+
+`Mise.ApiService` runs a JWT-bearer scheme (`Mise.ServiceDefaults.JwtAuthDefaults` for the
+issuer/audience/config-key constants — named `PlaceholderAuthDefaults` through Phase 2, when
+there was no real sign-in yet to validate against) with a global fallback policy that requires
+authentication by default — endpoints opt out with `AllowAnonymous` (`/health`, `/alive`,
+`/api/auth/login`) rather than opting in one by one. Two policies sit on top of that:
+`"FloorStaff"` (`RequireRole(FloorStaff, Manager)` — an OR, so a Manager satisfies it too,
+ADR-001 §Auth's "Manager policy implies Floor Staff permissions") and `"Manager"`
+(`RequireRole(Manager)` only). The validation side (the JWT-bearer scheme itself) is exactly
+what Phase 2 already wired; only the **minting** side moved, from `Mise.Web`'s deleted
+`PlaceholderAuthTokenHandler` (one fixed system identity for every request) to
+`StaffIdentity.Infrastructure`'s `JwtTokenIssuer` (a real token per signed-in staff member, with
+`NameIdentifier`/`Name`/`Role` claims). The signing key is still the same secret Aspire
+parameter (`jwt-signing-key`, set once via `dotnet user-secrets set` from `src/Mise.AppHost` —
+see the README), shared by both hosts, never hardcoded.
+
+`RegisterStaffCommand`/`LoginCommand` follow the same handler shape as
+`CreateReservationCommandHandler` (validate-then-throw, gateway mocked in unit tests, exactly
+one `IAuditWriter` call per real effect) — see `Mise.Modules.StaffIdentity.Application`.
+`RegisterStaffAsync`'s atomicity (the Identity user, the `StaffUser` profile row, and the
+`ProcessedOperation` row all commit or fail together) needs one extra step beyond
+`ReservationsData`'s own pattern: `UserManager.CreateAsync` normally calls `SaveChangesAsync`
+itself, so `StaffIdentityData` resolves `IUserStore<StaffIdentityUser>` separately (not via
+`UserManager.Store`, which is `protected`) and sets `AutoSaveChanges = false` on it right
+before calling `CreateAsync`, so the later explicit `SaveChangesAsync` covers everything.
+
+Nobody could ever reach the Manager-only register-staff endpoint without a Manager already
+existing — `Mise.MigrationService` seeds exactly one bootstrap Manager
+(`StaffIdentitySeeder.EnsureManagerExistsAsync`, idempotent) from two more Aspire parameters,
+`seed-manager-username` (a safe default, `"manager"`) and `seed-manager-password` (secret, no
+default — set the same way as `jwt-signing-key`).
+
+### The Blazor Server split: a sign-in cookie and a server-side JWT, never both in the browser
+
+`Mise.Web` authenticates its own browser sessions with an ordinary auth cookie
+(`CookieAuthenticationDefaults`, `LoginPath = "/login"`) — that's what makes `[Authorize]`,
+`AuthorizeView`, and `AuthorizeRouteView` work on Razor components. Separately, it holds the
+API JWT a login actually returned, server-side only, in a singleton `IStaffSessionTokenCache`
+keyed by staff id (never a cookie or `localStorage` value — ADR-004). Two consequences worth
+knowing before touching this code:
+
+- **`Login.razor` has no `@rendermode`.** Signing in calls `HttpContext.SignInAsync`, which
+  needs to write a real `Set-Cookie` header on an ordinary HTTP response — impossible from
+  inside an already-established SignalR circuit. This is the mirror image of this file's
+  existing `@rendermode` gotcha below (that one needs interactivity *from the start*; this one
+  must deliberately stay static SSR). Logout is a plain `GET /logout` minimal-API endpoint for
+  the identical reason.
+- **The per-user bearer token is attached inside the typed HTTP client itself
+  (`HttpReservationsClient`), not a `DelegatingHandler` registered via
+  `AddHttpMessageHandler<T>()`.** Handlers added that way are resolved from
+  `IHttpClientFactory`'s own pooled, rotating internal scope — never the calling circuit's DI
+  scope — so a scoped dependency like `AuthenticationStateProvider` injected into one would
+  silently resolve the wrong instance. The typed client class itself, by contrast, **is**
+  constructed fresh from the calling scope every time (only the underlying
+  `SocketsHttpHandler` chain is pooled), so `AuthenticationStateProvider` resolves correctly
+  there. Every future typed client that needs the caller's token follows
+  `HttpReservationsClient`'s pattern, not a shared `DelegatingHandler`.
 
 ## No mediator library (ADR-005)
 
@@ -136,6 +214,55 @@ project-wide standard, not a per-module choice.
 | `Warning` | Recoverable, but the kind of thing worth noticing a pattern in | An `OperationId` replay was detected (idempotent and correct, but if it's frequent, something upstream is retrying more than expected) |
 | `Error` | An operation failed and the caller was affected. Always the exception-overload (`LogError(ex, "…")`) — never format the exception into the message string | An unhandled exception at a boundary |
 | `Critical` | The process itself can't do its job | Startup failure: can't reach the database, required config missing |
+
+## Error handling
+
+Logging an exception and a user actually seeing something other than a crash or a raw stack
+trace are two different guarantees — this project had the first (the `Error` level row above)
+without the second for a while, which is exactly the gap to not reintroduce. Every composition
+root has its own version of the same two-part guarantee: **log it (once, at the boundary, with
+the exception overload) and show the caller something short of the truth.** Never both silent.
+
+- **`Mise.ApiService`**: `GlobalExceptionHandler` (`IExceptionHandler`) is the catch-all every
+  other handler falls through to — registered *after* `ValidationExceptionHandler` (handlers run
+  in registration order, first-to-return-true wins), it logs the full exception at `Error` and
+  returns a generic RFC 7807 `ProblemDetails` 500 carrying only a `traceId`, never the exception's
+  type or message. A validation failure (an *expected* outcome) still gets `ValidationException`'s
+  own field-scoped 400 — the catch-all is for everything that isn't that: a bug, a DB outage, an
+  invariant violation. Adding a new expected-outcome-as-exception type gets its own
+  `IExceptionHandler`, registered before the catch-all, the same way `ValidationExceptionHandler`
+  already is — don't grow `GlobalExceptionHandler` a `switch` over exception types.
+- **`Mise.MigrationService`**: the one-shot startup logic is wrapped in try/catch that logs
+  `Critical` with the exception before rethrowing — without it, a startup failure is only ever a
+  raw, unstructured stderr dump from the runtime's default unhandled-exception handling, invisible
+  to whatever's watching the structured log stream. It still rethrows afterward so the process
+  still exits non-zero (`Mise.AppHost`'s `WaitForCompletion(migrations)` must keep seeing this as
+  a failure).
+- **`Mise.Web` (Blazor Server)**: every call from a component into a typed HTTP client
+  (`HttpReservationsClient`, `HttpStaffAuthClient`) is wrapped where it's called
+  (`ReservationForm.razor.cs`, `Login.razor`), not left to propagate — an unhandled exception in
+  an interactive component is Blazor Server's cue to tear down the whole circuit
+  (`MainLayout.razor`'s `#blazor-error-ui` banner is the generic fallback for anything that still
+  gets that far), and `Login.razor` is static SSR, where an unhandled exception hits ASP.NET
+  Core's generic `/Error` page instead of staying on the form. Each catch logs the exception and
+  sets a **generic, user-facing message distinct from an expected failure's message** (e.g.
+  `Login.razor`'s `"Something went wrong signing in."` vs. `"Incorrect username or password."` —
+  conflating the two sends someone chasing a password reset for what was actually an outage).
+  `AddInteractiveServerComponents(options => options.DetailedErrors = ...)` is set explicitly
+  (Development-only) so a circuit-level crash never leaks a stack trace either, belt-and-suspenders
+  with the per-call try/catch.
+- **A known, real friction point when logging from Razor components**: `[LoggerMessage]`'s
+  source generator requires a *field* of type `ILogger`; Blazor's `[Inject]` only ever populates
+  a *property* (its component-property-injection reflects over `PropertyInfo`, not fields). The
+  two are incompatible on the same member — `ReservationForm.razor.cs` and `Login.razor` use a
+  plain `Logger.LogError(ex, "…")` instance call instead, which is fine here: neither is a hot
+  path (each only runs when a user submits and the call fails), matching the same exception
+  Logging's own bullet above already carves out for a composition root's `Program.cs`.
+- **Never let a generic exception handler leak what the specific one already knows not to**: the
+  same PII/secrets rules from "Logging" above apply to what gets logged here, and doubly to what
+  gets returned to the caller — a generic 500 body has no business containing a customer name, a
+  connection string, or a stack trace under any circumstances, dev environments included (that's
+  what the *server-side* log line is for).
 
 ## Per-feature test contract
 
@@ -184,7 +311,7 @@ project-wide standard, not a per-module choice.
   to. This is .NET 10's `WebApplicationFactory<T>.UseKestrel(...)` / `.StartServer()` (see
   `PlaywrightWebAppFixture.cs`), not a hand-rolled `dotnet run` subprocess. `KestrelFactory<T>`
   generalizes this to boot **two** real hosts at once (Mise.ApiService + Mise.Web) for a test
-  that needs the whole path, not just the UI — see `ReservationsE2EFixture.cs`. Point the
+  that needs the whole path, not just the UI — see `MiseE2EFixture.cs`. Point the
   second host's outgoing service-discovery lookups at the first via
   `UseSetting("services:{name}:{scheme}:0", url)`, the same config shape Aspire's own
   `WithReference(...)` would inject at runtime.
@@ -195,7 +322,7 @@ project-wide standard, not a per-module choice.
   merged in, so the app still sees the missing/default value and throws. `UseSetting(key,
   value)` doesn't have this problem: it writes directly into the settings dictionary consulted
   from the start, and a later `UseSetting` call for the same key overwrites an earlier one
-  (which is how `ReservationsApiFixture` layers a real Testcontainers connection string over
+  (which is how `MiseApiFixture` layers a real Testcontainers connection string over
   `CustomWebApplicationFactory`'s own placeholder default). Prefer `UseSetting` over
   `ConfigureAppConfiguration` for anything a minimal-hosting `Program.cs` might read early.
 - **A Blazor Web App page with `@rendermode InteractiveServer` (prerendering on) is briefly

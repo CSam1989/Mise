@@ -9,7 +9,7 @@ namespace Mise.E2ETests;
 
 /// <summary>
 /// Generic real-Kestrel-socket factory, shared by the ApiService and Web hosts
-/// ReservationsE2EFixture boots — the same .NET 10 WebApplicationFactory.UseKestrel
+/// MiseE2EFixture boots — the same .NET 10 WebApplicationFactory.UseKestrel
 /// mechanism PlaywrightWebAppFixture uses for Mise.Web alone, generalized to any host so
 /// Playwright's browser and Mise.Web's own outgoing HTTP calls can both reach a real socket.
 /// </summary>

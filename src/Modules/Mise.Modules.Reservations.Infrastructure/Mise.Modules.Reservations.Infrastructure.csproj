@@ -26,6 +26,7 @@
     <ProjectReference Include="..\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Mise.SharedKernel.Persistence\Mise.SharedKernel.Persistence.csproj" />
   </ItemGroup>
 
 </Project>

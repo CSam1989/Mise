@@ -26,8 +26,10 @@ public class CreateReservationCommandHandlerTests
             NullLogger<CreateReservationCommandHandler>.Instance);
     }
 
+    private static readonly Guid PerformingStaffId = Guid.NewGuid();
+
     private static CreateReservationCommand ValidCommand(int partySize = 4) =>
-        new(Guid.NewGuid(), "Jane Doe", partySize, DateTimeOffset.Parse("2026-09-20T19:00:00+02:00"), "staff-1");
+        new(Guid.NewGuid(), "Jane Doe", partySize, DateTimeOffset.Parse("2026-09-20T19:00:00+02:00"), PerformingStaffId);
 
     [Fact]
     public async Task HandleAsync_PartySizeZero_ThrowsValidationExceptionAndNeverTouchesTheGatewayOrAuditWriter()
@@ -70,7 +72,7 @@ public class CreateReservationCommandHandlerTests
                 It.Is<AuditLogEntry>(e =>
                     e.EntityId == reservationId
                     && e.Action == "Created"
-                    && e.PerformedBySystemProcess == command.PerformedBy
+                    && e.PerformedByStaffId == command.PerformedByStaffId
                     && e.OccurredAtUtc == _timeProvider.GetUtcNow()),
                 It.IsAny<CancellationToken>()),
             Times.Once,

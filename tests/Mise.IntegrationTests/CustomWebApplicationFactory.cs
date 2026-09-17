@@ -22,7 +22,7 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<ApiServi
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting(PlaceholderAuthDefaults.SigningKeyConfigKey, TestSigningKey);
+        builder.UseSetting(JwtAuthDefaults.SigningKeyConfigKey, TestSigningKey);
         builder.UseSetting("ConnectionStrings:misedb", "Host=localhost;Database=misedb-unused;Username=postgres;Password=postgres");
     }
 }

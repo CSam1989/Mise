@@ -44,7 +44,7 @@ public sealed partial class CreateReservationCommandHandler(
                     EntityType = "Reservation",
                     EntityId = result.ReservationId,
                     Action = "Created",
-                    PerformedBySystemProcess = command.PerformedBy,
+                    PerformedByStaffId = command.PerformedByStaffId,
                     OccurredAtUtc = timeProvider.GetUtcNow(),
                     Details = $"Party of {command.PartySize}.",
                 },

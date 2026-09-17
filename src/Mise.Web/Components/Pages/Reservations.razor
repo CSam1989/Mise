@@ -6,6 +6,7 @@
    up). Disabling prerendering means the form simply isn't in the DOM until the circuit is
    ready, which Playwright's own auto-waiting locators handle for free. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize]
 @using Mise.UI.Components
 @using Mise.UI.Abstractions
 @inject IReservationsClient ReservationsClient

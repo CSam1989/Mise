@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Mise.ApiService\Mise.ApiService.csproj" Aliases="ApiService" />
     <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Infrastructure\Mise.Modules.StaffIdentity.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

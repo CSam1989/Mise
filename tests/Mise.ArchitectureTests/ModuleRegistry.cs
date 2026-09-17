@@ -11,6 +11,7 @@ internal static class ModuleRegistry
     public static readonly IReadOnlyList<string> Modules =
     [
         "Reservations",
-        // Phase 3+ adds entries here: "Tables", "StaffIdentity", "Scheduling".
+        "StaffIdentity",
+        // Phase 4+ adds entries here: "Tables", "Scheduling".
     ];
 }

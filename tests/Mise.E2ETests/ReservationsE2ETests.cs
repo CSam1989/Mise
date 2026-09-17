@@ -1,8 +1,8 @@
 namespace Mise.E2ETests;
 
 [Trait("Category", "E2E")]
-[Collection(ReservationsE2ECollection.Name)]
-public class ReservationsE2ETests(ReservationsE2EFixture fixture)
+[Collection(MiseE2ECollection.Name)]
+public class ReservationsE2ETests(MiseE2EFixture fixture)
 {
     [Fact]
     public async Task CreateReservation_HappyPath_AppearsInDayList()
@@ -13,6 +13,8 @@ public class ReservationsE2ETests(ReservationsE2EFixture fixture)
         try
         {
             var page = await context.NewPageAsync();
+            await LoginSteps.SignInAsync(page, fixture.BaseUrl, MiseE2EFixture.SeedManagerUsername, MiseE2EFixture.SeedManagerPassword);
+
             await page.GotoAsync($"{fixture.BaseUrl}/reservations");
 
             await page.Locator("[data-testid=input-customer-name]").FillAsync("Jane Doe");

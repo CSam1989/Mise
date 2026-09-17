@@ -95,6 +95,9 @@
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
+    <!-- Phase 3 — StaffIdentity: ASP.NET Core Identity's EF Core stores. Pinned to the same
+         10.0.12 patch as the rest of the ASP.NET Core / EF Core family above. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
     <!-- Structured logging standard (CLAUDE.md "Logging") — ILogger<T> + [LoggerMessage] in
          every non-Domain project, including ones with no other package reference. -->

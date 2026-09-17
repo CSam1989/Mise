@@ -4,8 +4,8 @@ using System.Text.Json;
 namespace Mise.IntegrationTests;
 
 [Trait("Category", "Integration")]
-[Collection(ReservationsApiCollection.Name)]
-public class ReservationsEndpointTests(ReservationsApiFixture fixture)
+[Collection(MiseApiCollection.Name)]
+public class ReservationsEndpointTests(MiseApiFixture fixture)
 {
     private static CancellationToken CT => TestContext.Current.CancellationToken;
 
@@ -94,13 +94,13 @@ public class ReservationsEndpointTests(ReservationsApiFixture fixture)
         await connection.OpenAsync(CT);
         await using var command = connection.CreateCommand();
         command.CommandText =
-            "select performed_by_system_process from shared.audit_log_entry where entity_id = @id and action = 'Created'";
+            "select performed_by_staff_id from shared.audit_log_entry where entity_id = @id and action = 'Created'";
         command.Parameters.AddWithValue("id", reservationId);
         await using var reader = await command.ExecuteReaderAsync(CT);
 
         (await reader.ReadAsync(CT)).Should().BeTrue(because: "creating a reservation must write exactly one matching audit entry.");
-        reader.GetString(0).Should().Be("integration-test",
-            because: "PerformedBy must round-trip from the caller's JWT Name claim through to the audit entry — not just be present, but be the right value.");
+        reader.GetGuid(0).Should().Be(MiseApiFixture.DefaultStaffId,
+            because: "PerformedByStaffId must round-trip from the caller's JWT NameIdentifier claim through to the audit entry (Phase 3) — not just be present, but be the right value.");
         (await reader.ReadAsync(CT)).Should().BeFalse(because: "exactly one audit entry, not more.");
     }
 }

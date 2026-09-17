@@ -23,6 +23,10 @@ public class WebTests
         // persists to user secrets, but this non-interactive test graph needs it supplied
         // directly, the same way a CI pipeline would set it as a real secret.
         appHost.Configuration["Parameters:jwt-signing-key"] = "webtests-fixture-signing-key-value";
+        // "seed-manager-password" is likewise a secret Aspire parameter with no default
+        // (Phase 3) — Mise.MigrationService fails fast without it, the same way it already
+        // did for the signing key above.
+        appHost.Configuration["Parameters:seed-manager-password"] = "webtests-fixture-seed-manager-password";
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Debug);

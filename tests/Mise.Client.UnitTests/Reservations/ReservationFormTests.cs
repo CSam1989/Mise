@@ -1,5 +1,8 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Mise.UI.Abstractions;
 using Mise.UI.Components;
 using Moq;
@@ -8,6 +11,9 @@ namespace Mise.Client.UnitTests.Reservations;
 
 public class ReservationFormTests : BunitContext
 {
+    public ReservationFormTests() =>
+        Services.AddSingleton<ILogger<ReservationForm>>(NullLogger<ReservationForm>.Instance);
+
     [Fact]
     public void Submit_PartySizeEmpty_ShowsInlineErrorAndNeverCallsTheClient()
     {
@@ -51,5 +57,28 @@ public class ReservationFormTests : BunitContext
             Times.Once);
         created.Should().Be(reservationDto,
             because: "a successful submission must raise OnCreated with the client's returned DTO.");
+    }
+
+    [Fact]
+    public void Submit_ClientThrows_ShowsGenericErrorAndNeverRaisesOnCreated()
+    {
+        var client = new Mock<IReservationsClient>();
+        client
+            .Setup(c => c.CreateAsync(It.IsAny<CreateReservationRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        var onCreatedCalled = false;
+        var cut = Render<ReservationForm>(parameters => parameters
+            .Add(p => p.ReservationsClient, client.Object)
+            .Add(p => p.OnCreated, EventCallback.Factory.Create<ReservationDto>(this, _ => onCreatedCalled = true)));
+
+        cut.Find("[data-testid=input-customer-name]").Input("Jane Doe");
+        cut.Find("[data-testid=input-party-size]").Input("4");
+        cut.Find("[data-testid=btn-submit-reservation]").Click();
+
+        cut.Find("[data-testid=error-unexpected]").TextContent.Should().Be(
+            "Something went wrong creating the reservation. Please try again.",
+            because: "a transport failure must show a generic message, never the raw exception, and must not crash the component.");
+        onCreatedCalled.Should().BeFalse();
     }
 }

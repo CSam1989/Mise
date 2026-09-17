@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Mise.Modules.Reservations.Application.CreateReservation;
 using Mise.Modules.Reservations.Contracts;
 
@@ -17,12 +18,14 @@ internal static class ReservationsEndpoints
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        // The placeholder auth spine (Phase 2) issues a system identity, not a staff one —
-        // StaffIdentity (Phase 3) starts passing a real staff id as PerformedBy instead.
-        var performedBy = httpContext.User.Identity?.Name ?? "unknown";
+        // Every caller here is a real, authenticated staff member (StaffIdentity, Phase 3) —
+        // the global fallback policy already guarantees authentication, and JwtTokenIssuer
+        // always sets this claim, so a missing/malformed one is a genuine bug worth a loud
+        // failure rather than a silent "unknown" fallback (Phase 2's placeholder behavior).
+        var performedByStaffId = Guid.Parse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         var command = new CreateReservationCommand(
-            request.OperationId, request.CustomerName, request.PartySize, request.ReservationDateTime, performedBy);
+            request.OperationId, request.CustomerName, request.PartySize, request.ReservationDateTime, performedByStaffId);
 
         var reservationId = await handler.HandleAsync(command, cancellationToken);
 

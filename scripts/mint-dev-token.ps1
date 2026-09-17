@@ -1,21 +1,27 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Mints a placeholder-auth JWT for manually testing protected endpoints with curl.
+    Mints a JWT for manually testing protected endpoints with curl, without going through a
+    real /api/auth/login call.
 
-    Phase 2's auth spine (CLAUDE.md, "Placeholder auth spine") has no login endpoint yet —
-    Mise.Web mints its own token internally, but there is no way for a human to obtain one.
-    This script mints an equivalent token directly, using the same jwt-signing-key user
-    secret `aspire run` already reads, so the result is valid against a locally running
-    Mise.ApiService.
+    Phase 3 replaced Mise.Web's fixed system-identity token with real per-staff sign-in
+    (docs/plan.md, ADR-004) — for most manual testing, prefer logging in for real via
+    /api/auth/login (see docs/Phase-3-Manual-Test-Checklist.md) and using the returned token.
+    This script stays useful for testing an *arbitrary* staff id/role combination directly
+    (e.g. simulating a FloorStaff caller against a Manager-only endpoint) without needing a
+    seeded account for every combination, using the same jwt-signing-key user secret
+    `aspire run` already reads.
 
 .EXAMPLE
-    $token = ./scripts/mint-dev-token.ps1
-    curl -H "Authorization: Bearer $token" https://localhost:<port>/api/reservations -d '...'
+    $token = ./scripts/mint-dev-token.ps1 -Role Manager
+    curl -H "Authorization: Bearer $token" https://localhost:<port>/api/staff -d '...'
 #>
 [CmdletBinding()]
 param(
-    [string]$Name = "manual-tester"
+    [string]$StaffId = [Guid]::NewGuid().ToString(),
+    [string]$FullName = "manual-tester",
+    [ValidateSet("FloorStaff", "Manager")]
+    [string]$Role = "Manager"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,21 +40,23 @@ function ConvertTo-Base64Url([byte[]]$Bytes) {
     [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
-# The long URI form, not the short "name" claim: PlaceholderAuthTokenHandler and
-# ReservationsApiFixture's own token minting both use System.Security.Claims.ClaimTypes.Name
-# directly, which is this exact string — matching it here is what makes
-# httpContext.User.Identity.Name (and therefore CreateReservationCommand.PerformedBy)
-# resolve to -Name below instead of coming back empty.
+# The long URI forms, not the short "sub"/"name"/"role" claims: JwtTokenIssuer and
+# ReservationsApiFixture/StaffIdentityApiFixture's own token minting all use
+# System.Security.Claims.ClaimTypes directly, which are these exact strings.
+$nameIdentifierClaimType = 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'
 $nameClaimType = 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'
+$roleClaimType = 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
 
 $now = [DateTimeOffset]::UtcNow
 $header = @{ alg = 'HS256'; typ = 'JWT' } | ConvertTo-Json -Compress
 $payload = [ordered]@{
-    iss            = 'mise-placeholder-auth'
-    aud            = 'mise-api'
-    $nameClaimType = $Name
-    nbf            = $now.ToUnixTimeSeconds()
-    exp            = $now.AddHours(1).ToUnixTimeSeconds()
+    iss                     = 'mise-auth'
+    aud                     = 'mise-api'
+    $nameIdentifierClaimType = $StaffId
+    $nameClaimType          = $FullName
+    $roleClaimType          = $Role
+    nbf                     = $now.ToUnixTimeSeconds()
+    exp                     = $now.AddHours(8).ToUnixTimeSeconds()
 } | ConvertTo-Json -Compress
 
 $headerB64 = ConvertTo-Base64Url([System.Text.Encoding]::UTF8.GetBytes($header))

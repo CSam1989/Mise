@@ -11,6 +11,14 @@
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Contracts\Mise.Modules.Reservations.Contracts.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
+    <!-- Domain referenced explicitly (not just transitively via Application/Infrastructure)
+         since Program.cs names StaffRole directly when defining the FloorStaff/Manager
+         policies — CLAUDE.md's CPM philosophy: don't rely on an undeclared transitive
+         dependency for something referenced by name. -->
+    <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Domain\Mise.Modules.StaffIdentity.Domain.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Application\Mise.Modules.StaffIdentity.Application.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Contracts\Mise.Modules.StaffIdentity.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.StaffIdentity.Infrastructure\Mise.Modules.StaffIdentity.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

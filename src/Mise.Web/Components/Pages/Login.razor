@@ -1,0 +1,116 @@
+@page "/login"
+@* No @rendermode: sign-in must call HttpContext.SignInAsync, which needs a real HTTP
+   response to write the auth cookie into — impossible from an interactive SignalR circuit
+   (CLAUDE.md's Blazor rendermode gotcha applies in reverse here: where Reservations.razor
+   needs interactivity from the start, this page must deliberately stay static SSR so its
+   form POST is a normal HTTP request, exactly the built-in Blazor Identity template's own
+   Login page shape). *@
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.Extensions.Localization
+@using Microsoft.Extensions.Logging
+@using Mise.UI.Abstractions
+@using Mise.Web.Services
+@inject IStaffAuthClient StaffAuthClient
+@inject IStaffSessionTokenCache TokenCache
+@inject NavigationManager NavigationManager
+@inject IStringLocalizer<Login> Localizer
+@inject ILogger<Login> Logger
+
+<PageTitle>@Localizer["Title"]</PageTitle>
+
+<h1 data-testid="login-heading">@Localizer["Heading"]</h1>
+
+<EditForm Model="Input" FormName="login" OnValidSubmit="HandleLoginAsync" method="post">
+    <DataAnnotationsValidator />
+
+    <div class="form-field">
+        <label for="input-username">@Localizer["Username"]</label>
+        <InputText id="input-username" data-testid="input-username" @bind-Value="Input.Username" />
+    </div>
+
+    <div class="form-field">
+        <label for="input-password">@Localizer["Password"]</label>
+        <InputText id="input-password" type="password" data-testid="input-password" @bind-Value="Input.Password" />
+    </div>
+
+    @if (_errorMessage is not null)
+    {
+        <p data-testid="error-login" role="alert">@_errorMessage</p>
+    }
+
+    <button type="submit" data-testid="btn-login">@Localizer["SignIn"]</button>
+</EditForm>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private LoginFormModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string? _errorMessage;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task HandleLoginAsync()
+    {
+        _errorMessage = null;
+
+        LoginResult result;
+        try
+        {
+            result = await StaffAuthClient.LoginAsync(Input.Username, Input.Password, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // A transport failure (API unreachable, an unexpected 5xx) is not "wrong
+            // credentials" — showing InvalidCredentials here would send someone chasing a
+            // password reset for an outage. Static SSR means an unhandled exception here
+            // would otherwise hit ASP.NET Core's generic /Error page instead of staying on
+            // this form at all.
+            //
+            // Plain instance call, not [LoggerMessage] — see ReservationForm.razor.cs's
+            // identical comment: that generator needs a field, Blazor's [Inject] only
+            // populates a property, and this isn't a hot path either way.
+            Logger.LogError(ex, "Unexpected failure signing in.");
+            _errorMessage = Localizer["UnexpectedError"];
+            return;
+        }
+
+        if (!result.IsSuccess)
+        {
+            _errorMessage = Localizer["InvalidCredentials"];
+            return;
+        }
+
+        // Only claims go into the cookie — the raw API token never reaches the browser
+        // (ADR-004). It's cached server-side instead, keyed by this same staff id.
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, result.StaffUserId.ToString()),
+            new(ClaimTypes.Name, result.FullName),
+            new(ClaimTypes.Role, result.Role),
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        TokenCache.Store(result.StaffUserId, result.Token, result.ExpiresAtUtc);
+
+        NavigationManager.NavigateTo(ReturnUrl ?? "/", forceLoad: true);
+    }
+
+    private sealed class LoginFormModel
+    {
+        [Required]
+        public string Username { get; set; } = string.Empty;
+
+        [Required]
+        public string Password { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- No other PackageReference: a module's Domain project depends on Mise.SharedKernel
+       only — no EF, no ASP.NET, no other module (CLAUDE.md's module boundary table; enforced
+       by ModuleBoundaryTests.Domain_NeverReferencesAnotherMiseAssemblyExceptSharedKernel). -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

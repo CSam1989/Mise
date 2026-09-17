@@ -2,13 +2,22 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Mise.SharedKernel.Infrastructure;
 
-namespace Mise.Modules.Reservations.Infrastructure.Persistence.Configurations;
+namespace Mise.SharedKernel.Persistence.Configurations;
 
-internal sealed class AuditLogEntryConfiguration : IEntityTypeConfiguration<AuditLogEntry>
+/// <param name="excludeFromMigrations">True for every module except the one owning this
+/// table's DDL (see SharedKernelModelBuilderExtensions) — a non-owning module still maps and
+/// queries the same physical table, it just doesn't try to (re-)create it.</param>
+public sealed class AuditLogEntryConfiguration(bool excludeFromMigrations = false) : IEntityTypeConfiguration<AuditLogEntry>
 {
     public void Configure(EntityTypeBuilder<AuditLogEntry> builder)
     {
-        builder.ToTable("audit_log_entry", "shared");
+        builder.ToTable("audit_log_entry", "shared", t =>
+        {
+            if (excludeFromMigrations)
+            {
+                t.ExcludeFromMigrations();
+            }
+        });
         builder.HasKey(a => a.Id);
 
         builder.Property(a => a.Id).HasColumnName("id").ValueGeneratedNever();

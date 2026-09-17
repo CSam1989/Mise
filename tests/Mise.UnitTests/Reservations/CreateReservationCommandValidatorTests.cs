@@ -8,7 +8,7 @@ public class CreateReservationCommandValidatorTests
     private readonly CreateReservationCommandValidator _validator = new();
 
     private static CreateReservationCommand CommandWithPartySize(int partySize) =>
-        new(Guid.NewGuid(), "Jane Doe", partySize, DateTimeOffset.UtcNow, "staff-1");
+        new(Guid.NewGuid(), "Jane Doe", partySize, DateTimeOffset.UtcNow, Guid.NewGuid());
 
     [Fact]
     public void Validate_PartySizeZero_FailsWithExactMessage()

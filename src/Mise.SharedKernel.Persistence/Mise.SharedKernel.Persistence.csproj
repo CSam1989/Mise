@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- The EF-aware sibling of Mise.SharedKernel.Infrastructure (Phase 3 — StaffIdentity is the
+       second module needing shared.processed_operation/audit_log_entry, which is what forces
+       this decision per CLAUDE.md's cross-cutting infra note). Mise.SharedKernel.Infrastructure
+       itself must stay EF-free forever: X.Application projects reference it directly for
+       IAuditWriter, and if EF Core landed there it would leak onto every module's Application
+       layer transitively — exactly what ModuleBoundaryTests forbids. This project holds the
+       EF-touching half instead, and is referenced only by module Infrastructure projects,
+       never Application. -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <!-- ToTable/HasColumnName/HasColumnType are relational-provider extension methods, not
+         part of bare Microsoft.EntityFrameworkCore. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

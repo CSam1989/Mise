@@ -20,6 +20,10 @@
     <PackageReference Include="Respawn" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+    <!-- PasswordRehashTests spins up a throwaway Identity/EF pipeline directly (not just
+         through Mise.Modules.StaffIdentity.Infrastructure's project reference) to swap in an
+         older PasswordHasherOptions.CompatibilityMode. -->
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
@@ -33,6 +37,7 @@
     <ProjectReference Include="..\..\src\Mise.AppHost\Mise.AppHost.csproj" />
     <ProjectReference Include="..\..\src\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Infrastructure\Mise.Modules.StaffIdentity.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

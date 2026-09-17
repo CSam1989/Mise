@@ -20,5 +20,10 @@
         <input id="input-reservation-date-time" data-testid="input-reservation-date-time" type="datetime-local" @bind="ReservationDateTimeLocal" />
     </div>
 
+    @if (UnexpectedError is not null)
+    {
+        <p data-testid="error-unexpected" role="alert">@UnexpectedError</p>
+    }
+
     <button type="submit" data-testid="btn-submit-reservation">Create reservation</button>
 </form>

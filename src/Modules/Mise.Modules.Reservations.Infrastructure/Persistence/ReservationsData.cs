@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Application.Ports;
 using Mise.Modules.Reservations.Domain;
+using Mise.SharedKernel.Persistence;
 
 namespace Mise.Modules.Reservations.Infrastructure.Persistence;
 

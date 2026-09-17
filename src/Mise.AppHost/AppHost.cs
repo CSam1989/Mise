@@ -7,19 +7,27 @@ var postgres = builder.AddPostgres("postgres")
 
 var misedb = postgres.AddDatabase("misedb");
 
-// Phase 2's placeholder JWT-bearer signing key (ADR-004's real StaffIdentity-issued tokens
-// land in Phase 3), shared by apiservice (validates) and webfrontend (mints its own
-// system-identity token). Not auto-generated like the Postgres password above — set once
-// per machine with `dotnet user-secrets set Parameters:jwt-signing-key <value>` from
-// src/Mise.AppHost (see README).
+// JWT-bearer signing key, shared by apiservice (validates) and — as of Phase 3 —
+// StaffIdentity's JwtTokenIssuer (mints real per-staff tokens; Mise.Web no longer mints its
+// own). Not auto-generated like the Postgres password above — set once per machine with
+// `dotnet user-secrets set Parameters:jwt-signing-key <value>` from src/Mise.AppHost (see
+// README).
 var jwtSigningKey = builder.AddParameter("jwt-signing-key", secret: true);
 
-// Mise.MigrationService migrates every module's DbContext, then exits. apiservice waits for
-// it to complete before starting — schema-readiness is a precondition of serving traffic,
-// not something the API host does for itself on boot.
+// The bootstrap Manager account (docs/Phase-3-Manual-Test-Checklist.md's one-time setup) —
+// nobody could ever reach the Manager-only register-staff endpoint without one existing
+// first. Username has a safe non-secret default; the password does not.
+var seedManagerUsername = builder.AddParameter("seed-manager-username", "manager");
+var seedManagerPassword = builder.AddParameter("seed-manager-password", secret: true);
+
+// Mise.MigrationService migrates every module's DbContext (and seeds the Manager account
+// above), then exits. apiservice waits for it to complete before starting — schema-readiness
+// is a precondition of serving traffic, not something the API host does for itself on boot.
 var migrations = builder.AddProject<Projects.Mise_MigrationService>("migrations")
     .WithReference(misedb)
-    .WaitFor(misedb);
+    .WaitFor(misedb)
+    .WithEnvironment("StaffIdentity__SeedManager__Username", seedManagerUsername)
+    .WithEnvironment("StaffIdentity__SeedManager__Password", seedManagerPassword);
 
 var apiService = builder.AddProject<Projects.Mise_ApiService>("apiservice")
     .WithReference(misedb)
@@ -28,11 +36,12 @@ var apiService = builder.AddProject<Projects.Mise_ApiService>("apiservice")
     .WaitForCompletion(migrations)
     .WithHttpHealthCheck("/health");
 
+// No JWT signing key here (Phase 2 had one, for its own token-minting placeholder): Mise.Web
+// never sees a signing key at all now — it only ever holds a token the API already issued.
 builder.AddProject<Projects.Mise_Web>("webfrontend")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
     .WithReference(apiService)
-    .WithEnvironment("Authentication__Jwt__SigningKey", jwtSigningKey)
     .WaitFor(apiService);
 
 builder.Build().Run();

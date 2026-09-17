@@ -5,14 +5,22 @@
     <Project Path="src/Mise.ServiceDefaults/Mise.ServiceDefaults.csproj" />
     <Project Path="src/Mise.SharedKernel/Mise.SharedKernel.csproj" />
     <Project Path="src/Mise.SharedKernel.Infrastructure/Mise.SharedKernel.Infrastructure.csproj" />
+    <Project Path="src/Mise.SharedKernel.Persistence/Mise.SharedKernel.Persistence.csproj" />
     <Project Path="src/Mise.MigrationService/Mise.MigrationService.csproj" />
     <Project Path="src/Mise.Web/Mise.Web.csproj" />
   </Folder>
-  <Folder Name="/src/Modules/">
-    <Project Path="src/Modules/Mise.Modules.Reservations.Domain/Mise.Modules.Reservations.Domain.csproj" />
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Reservations/">
     <Project Path="src/Modules/Mise.Modules.Reservations.Application/Mise.Modules.Reservations.Application.csproj" />
-    <Project Path="src/Modules/Mise.Modules.Reservations.Infrastructure/Mise.Modules.Reservations.Infrastructure.csproj" />
     <Project Path="src/Modules/Mise.Modules.Reservations.Contracts/Mise.Modules.Reservations.Contracts.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Reservations.Domain/Mise.Modules.Reservations.Domain.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Reservations.Infrastructure/Mise.Modules.Reservations.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/StaffIdentity/">
+    <Project Path="src/Modules/Mise.Modules.StaffIdentity.Application/Mise.Modules.StaffIdentity.Application.csproj" />
+    <Project Path="src/Modules/Mise.Modules.StaffIdentity.Contracts/Mise.Modules.StaffIdentity.Contracts.csproj" />
+    <Project Path="src/Modules/Mise.Modules.StaffIdentity.Domain/Mise.Modules.StaffIdentity.Domain.csproj" />
+    <Project Path="src/Modules/Mise.Modules.StaffIdentity.Infrastructure/Mise.Modules.StaffIdentity.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/UI/">
     <Project Path="src/UI/Mise.UI.Abstractions/Mise.UI.Abstractions.csproj" />
