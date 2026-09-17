@@ -238,6 +238,59 @@ gets). Two things this module had to decide that no earlier module needed to:
   ("registering staff is API-only ... deferred to Phase 10"). Proven at the Architecture/Unit/
   Integration tiers only; the RCL screens land with Phase 10's shared-component build-out.
 
+## Scheduling (Phase 5 — service periods & closed days)
+
+`Mise.Modules.Scheduling` follows `CreateReservationCommandHandler`'s shape exactly for its
+three command handlers (`Create`/`Update`/`Delete` `ServicePeriod`) — validate-then-throw,
+gateway mocked in unit tests, `OperationId` idempotency on every one of them, exactly one
+`IAuditWriter` call per real effect. FR-08's own charter text ("Managers can define service
+periods/hours ... and mark days closed") got no acceptance criteria the way US-04 got them for
+Tables/Sections — the charter's data model names one entity only (`ServicePeriod`: Date, Label,
+StartTime, EndTime, IsClosed), so this phase had to resolve, and document, what US-04 didn't
+need to:
+
+- **One entity does both jobs, not two.** A row with `IsClosed = false` is a normal open window
+  (Lunch, Dinner); a row with `IsClosed = true` is a closure — a whole day (`00:00`–`00:00`,
+  `EndsNextDay: true`) or a partial one ("kitchen closed 14:00–17:00"). There is no separate
+  "closed day" table or flag elsewhere.
+- **docs/plan.md correction #9 (`EndsNextDay`) lands in `ServicePeriod`'s first commit**, not
+  retrofitted — a plain Date+StartTime+EndTime can't represent "Dinner 18:00–01:00", and this is
+  the phase where the entity is born. Domain invariant, self-contained within the aggregate
+  (`ServicePeriod.Create`/`UpdateDetails`, `ArgumentOutOfRangeException` — same category as
+  `Section.Create`'s guard clauses, not `Table.Deactivate()`'s `DomainRuleViolationException`,
+  because it's a structural field-shape rule with no state or cross-aggregate query involved):
+  a same-day window (`EndsNextDay: false`) must have `EndTime` strictly after `StartTime`; a
+  next-day window (`EndsNextDay: true`) allows any combination, including `EndTime == StartTime`
+  — which represents exactly 24 hours, so "closed all day" is just `00:00`–`00:00` with
+  `EndsNextDay: true`, not a special-cased nullable start/end.
+- **No `xmin`/`ETag` concurrency on `ServicePeriod`** — the same scope decision already made for
+  `Section` (docs/plan.md correction #5 names only `Table`/`Reservation` as concurrency-tracked):
+  infrequent, low-conflict Manager-config edits, last-write-wins.
+- **Hard delete, not deactivate.** Unlike `Table`/`Section`, the charter's own data model gives
+  `ServicePeriod` no `IsActive` column, so removing one is a real `DELETE`, not a soft flag —
+  still `OperationId`-idempotent per the mutating-endpoint contract, which carves out no
+  exception for delete. This forced one design point worth flagging for the next hard-delete
+  endpoint that gets added: **a replay's idempotency check must run before the existence check**,
+  not after. A soft-deactivate (`Section`/`Table`) can always find the row again on replay
+  because it's still there; a hard delete makes the row disappear after the first successful
+  call, so `ISchedulingData.DeleteServicePeriodAsync` checks `shared.processed_operation` by
+  `OperationId` *first* and only falls through to a row lookup when that comes back empty —
+  getting this order backwards was caught by `DeleteServicePeriod_SameOperationIdTwice_ReturnsNoContentBothTimesAndDeletesOnlyOnce`
+  failing with a 404 on the second call during development, not by inspection.
+- **The delete endpoint's `OperationId` travels as a query parameter (`DELETE
+  /api/service-periods/{id}?operationId=...`), not a JSON body** — unlike POST/PATCH, a DELETE
+  with a request body has no precedent anywhere else in this codebase and minimal APIs bind
+  query parameters far more naturally than a DELETE body.
+- **`Manager`-only mutations, `FloorStaff`-readable `GET /api/service-periods?date=...`** —
+  mirrors `SectionsEndpoints` exactly. `GetServicePeriodsForDateAsync` is a plain read injected
+  directly into its endpoint (`ISchedulingData`, no query-handler class), same reasoning as
+  `SectionsEndpoints.GetActiveSectionsAsync`.
+- **No cross-module wiring to Reservations yet.** BR-01/overlap validation against service hours
+  is Phase 6's concern (Reservations proper) — Scheduling ships standalone, proven only at the
+  Architecture/Unit/Integration tiers.
+- **No Blazor UI for Scheduling yet** — same deferral Phase 4 made for Tables/Sections
+  ("no query-handler pattern exists yet ... no Blazor UI ... deferred to Phase 10").
+
 ## No mediator library (ADR-005)
 
 Cross-module domain events go through a ~40-line hand-rolled `IDomainEventPublisher` /

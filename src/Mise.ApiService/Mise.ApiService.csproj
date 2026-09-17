@@ -26,6 +26,13 @@
     <ProjectReference Include="..\Modules\Mise.Modules.Tables.Application\Mise.Modules.Tables.Application.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Tables.Contracts\Mise.Modules.Tables.Contracts.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Tables.Infrastructure\Mise.Modules.Tables.Infrastructure.csproj" />
+    <!-- Domain referenced explicitly since ServicePeriodsEndpoints.cs names ServicePeriod
+         directly (CLAUDE.md's CPM philosophy — same reasoning as StaffIdentity.Domain and
+         Tables.Domain above). -->
+    <ProjectReference Include="..\Modules\Mise.Modules.Scheduling.Domain\Mise.Modules.Scheduling.Domain.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Scheduling.Application\Mise.Modules.Scheduling.Application.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Scheduling.Contracts\Mise.Modules.Scheduling.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\Mise.Modules.Scheduling.Infrastructure\Mise.Modules.Scheduling.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

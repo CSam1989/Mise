@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Mise.Modules.Reservations.Infrastructure.Persistence;
+using Mise.Modules.Scheduling.Infrastructure.Persistence;
 using Mise.Modules.StaffIdentity.Infrastructure;
 using Mise.Modules.StaffIdentity.Infrastructure.Persistence;
 using Mise.Modules.Tables.Infrastructure.Persistence;
@@ -59,6 +60,9 @@ public sealed class MiseApiFixture : IAsyncLifetime
 
         var tablesDb = scope.ServiceProvider.GetRequiredService<TablesDbContext>();
         await tablesDb.Database.MigrateAsync(TestContext.Current.CancellationToken);
+
+        var schedulingDb = scope.ServiceProvider.GetRequiredService<SchedulingDbContext>();
+        await schedulingDb.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         var seeder = scope.ServiceProvider.GetRequiredService<StaffIdentitySeeder>();
         await seeder.EnsureManagerExistsAsync(

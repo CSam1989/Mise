@@ -5,10 +5,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using Mise.ApiService;
 using Mise.ApiService.Reservations;
+using Mise.ApiService.Scheduling;
 using Mise.ApiService.Staff;
 using Mise.ApiService.Tables;
 using Mise.Modules.Reservations.Application.CreateReservation;
 using Mise.Modules.Reservations.Infrastructure;
+using Mise.Modules.Scheduling.Application.CreateServicePeriod;
+using Mise.Modules.Scheduling.Application.DeleteServicePeriod;
+using Mise.Modules.Scheduling.Application.UpdateServicePeriod;
+using Mise.Modules.Scheduling.Infrastructure;
 using Mise.Modules.StaffIdentity.Application.Login;
 using Mise.Modules.StaffIdentity.Application.RegisterStaff;
 using Mise.Modules.StaffIdentity.Domain;
@@ -102,6 +107,13 @@ builder.Services.AddScoped<UpdateTableCommandHandler>();
 builder.Services.AddScoped<IValidator<UpdateTableCommand>, UpdateTableCommandValidator>();
 builder.Services.AddScoped<DeactivateTableCommandHandler>();
 
+builder.Services.AddSchedulingPersistence(reservationsConnectionString);
+builder.Services.AddScoped<CreateServicePeriodCommandHandler>();
+builder.Services.AddScoped<IValidator<CreateServicePeriodCommand>, CreateServicePeriodCommandValidator>();
+builder.Services.AddScoped<UpdateServicePeriodCommandHandler>();
+builder.Services.AddScoped<IValidator<UpdateServicePeriodCommand>, UpdateServicePeriodCommandValidator>();
+builder.Services.AddScoped<DeleteServicePeriodCommandHandler>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -125,6 +137,7 @@ app.MapAuthEndpoints();
 app.MapStaffEndpoints();
 app.MapSectionsEndpoints();
 app.MapTablesEndpoints();
+app.MapServicePeriodsEndpoints();
 
 app.MapDefaultEndpoints();
 

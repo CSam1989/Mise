@@ -5,6 +5,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Infrastructure;
 using Mise.Modules.Reservations.Infrastructure.Persistence;
+using Mise.Modules.Scheduling.Infrastructure;
+using Mise.Modules.Scheduling.Infrastructure.Persistence;
 using Mise.Modules.StaffIdentity.Infrastructure;
 using Mise.Modules.StaffIdentity.Infrastructure.Persistence;
 using Mise.Modules.Tables.Infrastructure;
@@ -25,6 +27,7 @@ var connectionString = builder.Configuration.GetConnectionString("misedb")
 builder.Services.AddReservationsPersistence(connectionString);
 builder.Services.AddStaffIdentityPersistence(connectionString);
 builder.Services.AddTablesPersistence(connectionString);
+builder.Services.AddSchedulingPersistence(connectionString);
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();
@@ -58,6 +61,14 @@ try
     logger.LogInformation("Applying migrations for {DbContext}...", nameof(TablesDbContext));
     await tablesDb.Database.MigrateAsync();
     logger.LogInformation("Migrations for {DbContext} applied.", nameof(TablesDbContext));
+
+    // Scheduling is a third non-owner of shared.processed_operation/audit_log_entry (same
+    // isOwner: false pattern as StaffIdentity/Tables) — it only needs to run after
+    // Reservations, so its position relative to the other two non-owners is arbitrary.
+    var schedulingDb = scope.ServiceProvider.GetRequiredService<SchedulingDbContext>();
+    logger.LogInformation("Applying migrations for {DbContext}...", nameof(SchedulingDbContext));
+    await schedulingDb.Database.MigrateAsync();
+    logger.LogInformation("Migrations for {DbContext} applied.", nameof(SchedulingDbContext));
 
     // Bootstraps the one account that can ever sign in before any Manager exists to register
     // further staff — RegisterStaffCommandHandler's endpoint is Manager-only, so without this

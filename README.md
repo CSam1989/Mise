@@ -9,28 +9,35 @@ this repo's early commits, or ask for a copy of the working plan doc.
 
 ## Status
 
-Phases 0-3 are done. Staff can really sign in now: `Mise.Modules.StaffIdentity`
-(Domain/Application/Infrastructure/Contracts) is the second registered module — ASP.NET Core
-Identity for credentials, two roles (`FloorStaff`/`Manager`, Manager implying FloorStaff),
-policy-based authorization, and a real JWT issued per staff member (see CLAUDE.md's "Staff auth
-spine" section). `Mise.Web` has a real `/login` page (cookie auth for the site itself, the API
-token held server-side only — never a browser cookie or `localStorage` value) and every page but
-Home now requires sign-in. `Mise.SharedKernel.Persistence` is new too: the EF-aware home for
-`shared.processed_operation`/`shared.audit_log_entry`, extracted once StaffIdentity became the
-second module needing them (see CLAUDE.md's "Cross-cutting infrastructure" section for why it
-couldn't live in `Mise.SharedKernel.Infrastructure` instead). `Reservation`s created via the web
-UI are now attributed to the real signed-in staff member's id, not a fixed system identity.
+Phases 0-5 are done. Four modules are registered now: `Mise.Modules.Reservations` (Phase 2's
+walking skeleton — create a reservation end to end, unchanged shape since), `Mise.Modules.StaffIdentity`
+(Phase 3 — ASP.NET Core Identity, two roles (`FloorStaff`/`Manager`, Manager implying FloorStaff),
+policy-based authorization, a real JWT issued per staff member), `Mise.Modules.Tables` (Phase 4 —
+Manager-only CRUD on Sections and Tables, plus the first optimistic-concurrency pattern in the
+codebase: `ETag`/`If-Match` backed by Postgres's `xmin`), and `Mise.Modules.Scheduling` (Phase 5 —
+Manager-only CRUD on `ServicePeriod`, i.e. service hours like Lunch/Dinner and marking days closed;
+see CLAUDE.md's "Scheduling" section for how a thin charter spec here got resolved). All four
+follow the same four-project shape (`Domain`/`Application`/`Infrastructure`/`Contracts`).
 
-Phase 2's walking skeleton (`Mise.Modules.Reservations`, create a reservation end to end) is
-still the first registered module and hasn't changed shape. Phase 4 (Tables & Sections) is next.
+`Mise.Web` has a real `/login` page (cookie auth for the site itself, the API token held
+server-side only — never a browser cookie or `localStorage` value) and every page but Home
+requires sign-in; `Reservation`s created via the web UI are attributed to the real signed-in staff
+member's id. `Mise.SharedKernel.Persistence` is the EF-aware home for
+`shared.processed_operation`/`shared.audit_log_entry`, shared by every module's `Infrastructure`
+project (never `Application` — see CLAUDE.md's "Cross-cutting infrastructure" section).
 
-One-time setup this phase added: run `dotnet user-secrets set Parameters:seed-manager-password
-<any-random-string>` from `src/Mise.AppHost` before your first `aspire run` (alongside Phase 2's
-`jwt-signing-key`) — `Mise.MigrationService` seeds exactly one bootstrap Manager account
-(username `manager` by default, overridable via `Parameters:seed-manager-username`) so there's
-someone who can register further staff at all. See
-[docs/Phase-3-Manual-Test-Checklist.md](docs/Phase-3-Manual-Test-Checklist.md) for the full
-one-time setup and a guided walkthrough.
+Tables/Sections and Scheduling are API-only so far — proven at the Architecture/Unit/Integration
+tiers, no Blazor UI yet. The shared RCL screens (including the live floor-plan board) land in
+Phase 10. Scheduling also has no cross-module link to Reservations yet (BR-01/overlap against
+service hours is Phase 6).
+
+One-time setup (unchanged since Phase 3 — Phase 4/5 added no new secrets): run `dotnet user-secrets
+set Parameters:seed-manager-password <any-random-string>` from `src/Mise.AppHost` before your first
+`aspire run` (alongside Phase 2's `jwt-signing-key`) — `Mise.MigrationService` seeds exactly one
+bootstrap Manager account (username `manager` by default, overridable via
+`Parameters:seed-manager-username`) so there's someone who can register further staff at all. See
+[docs/Phase-5-Manual-Test-Checklist.md](docs/Phase-5-Manual-Test-Checklist.md) for the full
+one-time setup and a guided walkthrough of what's landed most recently.
 
 ## Prerequisites
 
@@ -83,7 +90,9 @@ Mise.slnx
 │   ├── Mise.SharedKernel.Persistence  EF-aware home for ProcessedOperation + AuditWriter<T> (module Infrastructure only, never Application)
 │   ├── Modules/
 │   │   ├── Mise.Modules.Reservations.{Domain,Application,Infrastructure,Contracts}
-│   │   └── Mise.Modules.StaffIdentity.{Domain,Application,Infrastructure,Contracts}
+│   │   ├── Mise.Modules.StaffIdentity.{Domain,Application,Infrastructure,Contracts}
+│   │   ├── Mise.Modules.Tables.{Domain,Application,Infrastructure,Contracts}
+│   │   └── Mise.Modules.Scheduling.{Domain,Application,Infrastructure,Contracts}
 │   └── UI/
 │       ├── Mise.UI.Abstractions      Transport-agnostic client interfaces (IReservationsClient, IStaffAuthClient, …)
 │       └── Mise.UI.Components        The shared RCL both Blazor Server and MAUI render (ReservationForm, …)
@@ -96,11 +105,10 @@ Mise.slnx
 └── docs/
     ├── Restaurant-Reservations-Project-Charter.md
     ├── Phase-2-Manual-Test-Checklist.md
-    └── Phase-3-Manual-Test-Checklist.md
+    ├── Phase-3-Manual-Test-Checklist.md
+    ├── Phase-4-Manual-Test-Checklist.md
+    └── Phase-5-Manual-Test-Checklist.md
 ```
-
-`Tables` and `Scheduling` modules land starting Phase 4+, following the same four-project shape
-Reservations and StaffIdentity established.
 
 ## Conventions
 

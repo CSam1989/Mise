@@ -13,6 +13,6 @@ internal static class ModuleRegistry
         "Reservations",
         "StaffIdentity",
         "Tables",
-        // Phase 5+ adds entries here: "Scheduling".
+        "Scheduling",
     ];
 }

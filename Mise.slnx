@@ -28,6 +28,12 @@
     <Project Path="src/Modules/Mise.Modules.Tables.Domain/Mise.Modules.Tables.Domain.csproj" />
     <Project Path="src/Modules/Mise.Modules.Tables.Infrastructure/Mise.Modules.Tables.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Scheduling/">
+    <Project Path="src/Modules/Mise.Modules.Scheduling.Application/Mise.Modules.Scheduling.Application.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Scheduling.Contracts/Mise.Modules.Scheduling.Contracts.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Scheduling.Domain/Mise.Modules.Scheduling.Domain.csproj" />
+    <Project Path="src/Modules/Mise.Modules.Scheduling.Infrastructure/Mise.Modules.Scheduling.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/UI/">
     <Project Path="src/UI/Mise.UI.Abstractions/Mise.UI.Abstractions.csproj" />
     <Project Path="src/UI/Mise.UI.Components/Mise.UI.Components.csproj" />

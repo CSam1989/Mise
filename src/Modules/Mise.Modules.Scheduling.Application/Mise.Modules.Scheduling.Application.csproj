@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <!-- Own Domain, Mise.SharedKernel(.Infrastructure) for IAuditWriter — never EF Core, never
+       ASP.NET Core, never another module's Domain/Application/Infrastructure
+       (ModuleBoundaryTests.Application_NeverReferencesAnotherModulesDomainApplicationOrInfrastructure). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Mise.Modules.Scheduling.Domain\Mise.Modules.Scheduling.Domain.csproj" />
+    <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

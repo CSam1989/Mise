@@ -29,6 +29,8 @@
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Application\Mise.Modules.StaffIdentity.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Tables.Domain\Mise.Modules.Tables.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Tables.Application\Mise.Modules.Tables.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Scheduling.Domain\Mise.Modules.Scheduling.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Scheduling.Application\Mise.Modules.Scheduling.Application.csproj" />
   </ItemGroup>
 
 </Project>
