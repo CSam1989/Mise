@@ -103,4 +103,15 @@
          every non-Domain project, including ones with no other package reference. -->
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
+
+  <!-- Phase 6 — Reservations proper. Microsoft.Extensions.Options backs
+       IOptions<ReservationDefaultsOptions> (Decision #7's configured default turn time,
+       Mise.Modules.Reservations.Application). Mise.Modules.Reservations.Infrastructure now
+       declares an explicit PackageReference to the already-pinned Npgsql above (it references
+       PostgresException/PostgresErrorCodes by name to translate BR-01's exclusion-constraint
+       violation, docs/plan.md correction #1 — same "declare it if you reference it by name"
+       convention as Logging.Abstractions), which needs no new PackageVersion entry here. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.12" />
+  </ItemGroup>
 </Project>

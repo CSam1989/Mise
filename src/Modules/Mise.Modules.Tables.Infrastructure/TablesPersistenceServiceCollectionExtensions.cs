@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Mise.Modules.Tables.Application.Ports;
+using Mise.Modules.Tables.Contracts;
 using Mise.Modules.Tables.Infrastructure.Persistence;
 using Mise.SharedKernel.Infrastructure;
 using Mise.SharedKernel.Persistence;
@@ -22,6 +23,8 @@ public static class TablesPersistenceServiceCollectionExtensions
 
         services.AddScoped<ISectionsData, SectionsData>();
         services.AddScoped<ITablesData, TablesData>();
+        services.AddScoped<ITableGroupsData, TableGroupsData>();
+        services.AddScoped<ITableAvailabilityLookup, TableAvailabilityLookup>();
         services.AddScoped<IAuditWriter, AuditWriter<TablesDbContext>>();
 
         return services;

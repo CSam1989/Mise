@@ -401,11 +401,26 @@ Revisit if conflict frequency in practice is high (wifi worse than expected) —
 | SectionId | uuid | NO | FK → Section |
 | Name | varchar(50) | NO | e.g. "T12" |
 | MinCapacity / MaxCapacity | int | NO | |
-| IsCombinable | boolean | NO | |
+| IsCombinable | boolean | NO | must be `true` for a table to be added to a `TableGroup` (below) |
 | PositionX / PositionY | double precision | YES | floor plan layout coordinates |
 | Status | enum (text) | NO | Available / Reserved / Occupied / NeedsCleaning / Blocked |
 | IsActive | boolean | NO | soft-deactivate instead of hard delete (preserves reservation history) |
 | *(concurrency)* | `xmin` system column | — | Postgres's built-in row version, used via Npgsql `UseXminAsConcurrencyToken()` — no stored column needed (see ADR-001 Amendment 1) |
+
+### Entity: TableGroup (added by CLAUDE.md ADR-006 / docs/plan.md, Phase 6)
+
+Resolves BR-07's "or an explicitly combinable set of tables": `IsCombinable` alone is a boolean,
+not enough to say *which* tables combine with which. The charter's own `Reservation.TableId`
+stays a single nullable FK (no multi-table-per-reservation support) — a reservation is still
+assigned to one physical table; if that table belongs to an active `TableGroup`, BR-07's
+capacity check uses the group's summed capacity instead of the one table's own.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| Id | uuid | NO | PK |
+| Name | varchar(50) | NO | e.g. "T1+T2" |
+| TableIds | uuid[] | NO | native Postgres array, not a join table (ADR-006) — every member must have `IsCombinable = true`, be active, and belong to no other active group |
+| IsActive | boolean | NO | Create-only in Phase 6 — no Update/Deactivate endpoint yet |
 
 ### Entity: Section
 
@@ -543,8 +558,9 @@ Run inside a single transaction so a partial failure never leaves rows anonymize
 ### Relationships
 
 ```
-[Section] 1──────* [Table]
-[Table]   1──────* [Reservation]   (nullable FK — a reservation may be unassigned initially)
+[Section]    1──────* [Table]
+[TableGroup] *──────* [Table]      (Table.Id ∈ TableGroup.TableIds — a native array column, not a join table; added Phase 6/ADR-006)
+[Table]      1──────* [Reservation]   (nullable FK — a reservation may be unassigned initially)
 [StaffUser] 1────* [Reservation]   (CreatedBy)
 [StaffUser] 1────* [AuditLogEntry] (PerformedBy, nullable — system processes populate PerformedBySystemProcess instead)
 [StaffUser] 1────* [ConflictRecord] (ResolvedBy, nullable until resolved)

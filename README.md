@@ -9,34 +9,49 @@ this repo's early commits, or ask for a copy of the working plan doc.
 
 ## Status
 
-Phases 0-5 are done. Four modules are registered now: `Mise.Modules.Reservations` (Phase 2's
-walking skeleton — create a reservation end to end, unchanged shape since), `Mise.Modules.StaffIdentity`
+Phases 0-6 are done. Four modules are registered: `Mise.Modules.Reservations` (Phase 2's walking
+skeleton grown, in Phase 6, into the real aggregate — phone/email/notes/table assignment/
+`xmin`, `Update`/`Cancel` alongside `Create`, US-02 search, and BR-01's Postgres exclusion
+constraint for "no overlapping reservations on one table"), `Mise.Modules.StaffIdentity`
 (Phase 3 — ASP.NET Core Identity, two roles (`FloorStaff`/`Manager`, Manager implying FloorStaff),
 policy-based authorization, a real JWT issued per staff member), `Mise.Modules.Tables` (Phase 4 —
-Manager-only CRUD on Sections and Tables, plus the first optimistic-concurrency pattern in the
-codebase: `ETag`/`If-Match` backed by Postgres's `xmin`), and `Mise.Modules.Scheduling` (Phase 5 —
-Manager-only CRUD on `ServicePeriod`, i.e. service hours like Lunch/Dinner and marking days closed;
-see CLAUDE.md's "Scheduling" section for how a thin charter spec here got resolved). All four
-follow the same four-project shape (`Domain`/`Application`/`Infrastructure`/`Contracts`).
+Manager-only CRUD on Sections and Tables, the first optimistic-concurrency pattern in the
+codebase (`ETag`/`If-Match` backed by Postgres's `xmin`), plus Phase 6's `TableGroup` — an
+explicit, Manager-created combinable-table concept backing BR-07's "or an explicitly combinable
+set of tables"), and `Mise.Modules.Scheduling` (Phase 5 — Manager-only CRUD on `ServicePeriod`,
+i.e. service hours like Lunch/Dinner and marking days closed; see CLAUDE.md's "Scheduling"
+section for how a thin charter spec here got resolved). All four follow the same four-project
+shape (`Domain`/`Application`/`Infrastructure`/`Contracts`).
+
+Phase 6 is also this codebase's first real cross-module read at request time:
+`Mise.Modules.Reservations.Application` calls `Mise.Modules.Tables.Contracts.
+ITableAvailabilityLookup` directly to answer BR-07 (party size vs. a table's own or a
+combinable group's capacity) — see CLAUDE.md's ADR-006 for the design and why it doesn't cross
+any architecture-test boundary.
 
 `Mise.Web` has a real `/login` page (cookie auth for the site itself, the API token held
 server-side only — never a browser cookie or `localStorage` value) and every page but Home
 requires sign-in; `Reservation`s created via the web UI are attributed to the real signed-in staff
-member's id. `Mise.SharedKernel.Persistence` is the EF-aware home for
-`shared.processed_operation`/`shared.audit_log_entry`, shared by every module's `Infrastructure`
-project (never `Application` — see CLAUDE.md's "Cross-cutting infrastructure" section).
+member's id, and the form now also collects `CustomerPhone` (FR-01 names it explicitly).
+`Mise.SharedKernel.Persistence` is the EF-aware home for `shared.processed_operation`/
+`shared.audit_log_entry`, shared by every module's `Infrastructure` project (never `Application`
+— see CLAUDE.md's "Cross-cutting infrastructure" section).
 
-Tables/Sections and Scheduling are API-only so far — proven at the Architecture/Unit/Integration
-tiers, no Blazor UI yet. The shared RCL screens (including the live floor-plan board) land in
-Phase 10. Scheduling also has no cross-module link to Reservations yet (BR-01/overlap against
-service hours is Phase 6).
+Tables/Sections, Scheduling, and Reservations' new search/edit/cancel/table-assignment surface
+are all API-only so far — proven at the Architecture/Unit/Integration tiers, no Blazor UI beyond
+the one field above. The shared RCL screens (including the live floor-plan board) land in
+Phase 10. Reservations still has no cross-module link to Scheduling (a reservation can be made
+outside any defined service period — FR-08 validation isn't in Phase 6's charter refs), and
+BR-01 doesn't extend across a `TableGroup`'s other members (a known, documented gap — see
+CLAUDE.md). Seating (`Seated`/`Completed`/`NoShow`, BR-04/BR-05, the cross-module table-status
+event) is Phase 7.
 
-One-time setup (unchanged since Phase 3 — Phase 4/5 added no new secrets): run `dotnet user-secrets
-set Parameters:seed-manager-password <any-random-string>` from `src/Mise.AppHost` before your first
-`aspire run` (alongside Phase 2's `jwt-signing-key`) — `Mise.MigrationService` seeds exactly one
-bootstrap Manager account (username `manager` by default, overridable via
+One-time setup (unchanged since Phase 3 — Phase 4/5/6 added no new secrets): run `dotnet
+user-secrets set Parameters:seed-manager-password <any-random-string>` from `src/Mise.AppHost`
+before your first `aspire run` (alongside Phase 2's `jwt-signing-key`) — `Mise.MigrationService`
+seeds exactly one bootstrap Manager account (username `manager` by default, overridable via
 `Parameters:seed-manager-username`) so there's someone who can register further staff at all. See
-[docs/Phase-5-Manual-Test-Checklist.md](docs/Phase-5-Manual-Test-Checklist.md) for the full
+[docs/Phase-6-Manual-Test-Checklist.md](docs/Phase-6-Manual-Test-Checklist.md) for the full
 one-time setup and a guided walkthrough of what's landed most recently.
 
 ## Prerequisites
@@ -107,7 +122,8 @@ Mise.slnx
     ├── Phase-2-Manual-Test-Checklist.md
     ├── Phase-3-Manual-Test-Checklist.md
     ├── Phase-4-Manual-Test-Checklist.md
-    └── Phase-5-Manual-Test-Checklist.md
+    ├── Phase-5-Manual-Test-Checklist.md
+    └── Phase-6-Manual-Test-Checklist.md
 ```
 
 ## Conventions

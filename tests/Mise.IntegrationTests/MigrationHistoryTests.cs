@@ -22,12 +22,19 @@ public class MigrationHistoryTests(MiseApiFixture fixture)
         var tablesMigrationCount = await CountRowsAsync(connection, "tables", ct);
         var schedulingMigrationCount = await CountRowsAsync(connection, "scheduling", ct);
 
-        reservationsMigrationCount.Should().Be(1,
-            because: "Reservations' own migrations-history table must exist and record its one migration.");
+        // Exact counts, not >= 1: a real history-table collision (two modules sharing one
+        // physical table) would still leave every schema showing "at least one" row, silently
+        // passing a looser assertion — the exact count is what actually catches it, since a
+        // shared table would show every module's combined migration count in each schema's
+        // query alike. Bump the relevant number in the same commit as any module's next
+        // migration (Phase 6 added Reservations' AddReservationDetailsAndConcurrency and
+        // Tables' AddTableGroups, taking both from 1 to 2).
+        reservationsMigrationCount.Should().Be(2,
+            because: "Reservations' own migrations-history table must exist and record exactly its own two migrations.");
         staffIdentityMigrationCount.Should().Be(1,
             because: "StaffIdentity's own migrations-history table must exist, distinct from Reservations' — a shared table would make the second module's migration appear \"already applied\" via an id collision.");
-        tablesMigrationCount.Should().Be(1,
-            because: "Tables' own migrations-history table must exist, distinct from the other two — same collision risk Phase 3 already proved out, now checked against a third module.");
+        tablesMigrationCount.Should().Be(2,
+            because: "Tables' own migrations-history table must exist, distinct from the other two, and record exactly its own two migrations (InitialCreate + Phase 6's AddTableGroups).");
         schedulingMigrationCount.Should().Be(1,
             because: "Scheduling's own migrations-history table must exist, distinct from the other three — same collision risk, now checked against a fourth module.");
     }

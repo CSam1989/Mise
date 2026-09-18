@@ -26,6 +26,7 @@ public sealed partial class ReservationForm
     private ILogger<ReservationForm> Logger { get; set; } = default!;
 
     private string CustomerName { get; set; } = string.Empty;
+    private string CustomerPhone { get; set; } = string.Empty;
     private string PartySizeText { get; set; } = string.Empty;
     private DateTime? ReservationDateTimeLocal { get; set; }
     private Dictionary<string, string[]> FieldErrors { get; set; } = [];
@@ -50,7 +51,7 @@ public sealed partial class ReservationForm
         try
         {
             result = await ReservationsClient.CreateAsync(
-                new CreateReservationRequest(Guid.NewGuid(), CustomerName, partySize, reservationDateTime),
+                new CreateReservationRequest(Guid.NewGuid(), CustomerName, CustomerPhone, partySize, reservationDateTime),
                 CancellationToken.None);
         }
         catch (Exception ex)
@@ -77,6 +78,7 @@ public sealed partial class ReservationForm
         }
 
         CustomerName = string.Empty;
+        CustomerPhone = string.Empty;
         PartySizeText = string.Empty;
         ReservationDateTimeLocal = null;
 

@@ -12,6 +12,9 @@
          project uses ILogger<T>/[LoggerMessage] directly (CLAUDE.md's CPM philosophy: don't
          rely on an undeclared transitive dependency for something referenced by name). -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- Same CPM philosophy: PostgresException/PostgresErrorCodes (BR-01's exclusion-constraint
+         violation, docs/plan.md correction #1) are referenced by name in ReservationsData. -->
+    <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <!-- Design-time only (dotnet-ef migrations add) — never needed at runtime. -->
       <PrivateAssets>all</PrivateAssets>

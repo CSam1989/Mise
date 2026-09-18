@@ -9,13 +9,19 @@
   <ItemGroup>
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- IOptions<ReservationDefaultsOptions> — Decision #7's configured default turn time. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
-  <!-- Own Domain, Mise.SharedKernel(.Infrastructure) for IAuditWriter — never EF Core, never
-       ASP.NET Core, never another module's Domain/Application/Infrastructure
-       (ModuleBoundaryTests.Application_NeverReferencesAnotherModulesDomainApplicationOrInfrastructure). -->
+  <!-- Own Domain, Mise.SharedKernel(.Infrastructure) for IAuditWriter, and — new in Phase 6 —
+       Mise.Modules.Tables.Contracts for ITableAvailabilityLookup (BR-07). Other modules'
+       Contracts are explicitly allowed
+       (ModuleBoundaryTests.Application_NeverReferencesAnotherModulesDomainApplicationOrInfrastructure
+       forbids only another module's Domain/Application/Infrastructure); never EF Core, never
+       ASP.NET Core. -->
   <ItemGroup>
     <ProjectReference Include="..\Mise.Modules.Reservations.Domain\Mise.Modules.Reservations.Domain.csproj" />
+    <ProjectReference Include="..\Mise.Modules.Tables.Contracts\Mise.Modules.Tables.Contracts.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
   </ItemGroup>

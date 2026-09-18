@@ -8,7 +8,10 @@ using Mise.ApiService.Reservations;
 using Mise.ApiService.Scheduling;
 using Mise.ApiService.Staff;
 using Mise.ApiService.Tables;
+using Mise.Modules.Reservations.Application;
+using Mise.Modules.Reservations.Application.CancelReservation;
 using Mise.Modules.Reservations.Application.CreateReservation;
+using Mise.Modules.Reservations.Application.UpdateReservation;
 using Mise.Modules.Reservations.Infrastructure;
 using Mise.Modules.Scheduling.Application.CreateServicePeriod;
 using Mise.Modules.Scheduling.Application.DeleteServicePeriod;
@@ -20,6 +23,7 @@ using Mise.Modules.StaffIdentity.Domain;
 using Mise.Modules.StaffIdentity.Infrastructure;
 using Mise.Modules.Tables.Application.CreateSection;
 using Mise.Modules.Tables.Application.CreateTable;
+using Mise.Modules.Tables.Application.CreateTableGroup;
 using Mise.Modules.Tables.Application.DeactivateSection;
 using Mise.Modules.Tables.Application.DeactivateTable;
 using Mise.Modules.Tables.Application.UpdateSection;
@@ -41,6 +45,7 @@ builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 builder.Services.AddExceptionHandler<PreconditionRequiredExceptionHandler>();
 builder.Services.AddExceptionHandler<ConcurrencyConflictExceptionHandler>();
 builder.Services.AddExceptionHandler<DomainRuleViolationExceptionHandler>();
+builder.Services.AddExceptionHandler<ReservationOverlapExceptionHandler>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
@@ -85,8 +90,12 @@ builder.Services.AddAuthorizationBuilder()
 var reservationsConnectionString = builder.Configuration.GetConnectionString("misedb")
     ?? throw new InvalidOperationException("Connection string 'misedb' is not configured.");
 builder.Services.AddReservationsPersistence(reservationsConnectionString);
+builder.Services.Configure<ReservationDefaultsOptions>(builder.Configuration.GetSection("Reservations"));
 builder.Services.AddScoped<CreateReservationCommandHandler>();
 builder.Services.AddScoped<IValidator<CreateReservationCommand>, CreateReservationCommandValidator>();
+builder.Services.AddScoped<UpdateReservationCommandHandler>();
+builder.Services.AddScoped<IValidator<UpdateReservationCommand>, UpdateReservationCommandValidator>();
+builder.Services.AddScoped<CancelReservationCommandHandler>();
 
 builder.Services.AddStaffIdentityPersistence(reservationsConnectionString);
 builder.Services.AddStaffIdentityJwtIssuer(jwtSigningKey);
@@ -106,6 +115,8 @@ builder.Services.AddScoped<IValidator<CreateTableCommand>, CreateTableCommandVal
 builder.Services.AddScoped<UpdateTableCommandHandler>();
 builder.Services.AddScoped<IValidator<UpdateTableCommand>, UpdateTableCommandValidator>();
 builder.Services.AddScoped<DeactivateTableCommandHandler>();
+builder.Services.AddScoped<CreateTableGroupCommandHandler>();
+builder.Services.AddScoped<IValidator<CreateTableGroupCommand>, CreateTableGroupCommandValidator>();
 
 builder.Services.AddSchedulingPersistence(reservationsConnectionString);
 builder.Services.AddScoped<CreateServicePeriodCommandHandler>();
@@ -137,6 +148,7 @@ app.MapAuthEndpoints();
 app.MapStaffEndpoints();
 app.MapSectionsEndpoints();
 app.MapTablesEndpoints();
+app.MapTableGroupsEndpoints();
 app.MapServicePeriodsEndpoints();
 
 app.MapDefaultEndpoints();

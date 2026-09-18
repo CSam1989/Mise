@@ -18,6 +18,7 @@ public class ReservationsE2ETests(MiseE2EFixture fixture)
             await page.GotoAsync($"{fixture.BaseUrl}/reservations");
 
             await page.Locator("[data-testid=input-customer-name]").FillAsync("Jane Doe");
+            await page.Locator("[data-testid=input-customer-phone]").FillAsync("+32 470 00 00 00");
             await page.Locator("[data-testid=input-party-size]").FillAsync("4");
             await page.Locator("[data-testid=btn-submit-reservation]").ClickAsync();
 

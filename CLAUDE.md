@@ -10,7 +10,9 @@ Architecture per module, PostgreSQL, ASP.NET Core + Blazor Server + .NET MAUI Bl
 sharing one Razor Class Library, offline-first MAUI sync. Full architecture rationale lives in
 the charter's ADR-001 (stack) and ADR-002 (offline sync); this repo additionally carries
 **ADR-004** (the Blazor Server website is an API client over HTTP, exactly like MAUI — not
-in-process) and **ADR-005** (no MediatR or other mediator library — see below).
+in-process), **ADR-005** (no MediatR or other mediator library — see below), and **ADR-006**
+(combinable table groups + the first real cross-module Contracts read — see "Reservations
+proper (Phase 6)" below).
 
 ## Non-negotiable rules
 
@@ -290,6 +292,158 @@ need to:
   Architecture/Unit/Integration tiers.
 - **No Blazor UI for Scheduling yet** — same deferral Phase 4 made for Tables/Sections
   ("no query-handler pattern exists yet ... no Blazor UI ... deferred to Phase 10").
+
+## Reservations proper (Phase 6 — BR-01 overlap, BR-07 capacity/combinable, search)
+
+`Mise.Modules.Reservations` grows past Phase 2's four-field walking skeleton into the real
+aggregate (phone/email/notes/table assignment/timestamps/`xmin`), gains `Update`/`Cancel`
+alongside `Create` (FR-03's "edit or cancel"), and gains US-02/FR-02 search. This is also the
+first phase where a module's Application layer genuinely needs another module's data at
+request time — Scheduling's Phase 5 section above explicitly deferred wiring that seam up at
+all, so this phase had to design it.
+
+### ADR-006 — Combinable table groups, and the first real cross-module read
+
+**Status:** ACCEPTED. **Context:** BR-07 ("party size must fit within the assigned table's
+capacity, or an explicitly combinable set of tables") needs a way to represent *which* tables
+combine with which — docs/plan.md flagged this as an open question blocking this phase, naming
+two options (a self-referencing pointer on `Table`, or an explicit group entity), and noted the
+charter's own `Reservation.TableId` is a single nullable `uuid` with no multi-table-per-
+reservation support to build against.
+
+**Decision:** an explicit `TableGroup` aggregate, owned by the Tables module (`Id`, `Name`,
+`IsActive`, `TableIds` — an `IReadOnlyList<Guid>` mapped straight to a native Postgres `uuid[]`
+column via EF Core's primitive-collection support, not a join table: a restaurant's handful of
+combinable pairings never needs relational querying of its own, and the one query that matters
+— "is this table already in an active group" — reads every active group's small array back into
+memory rather than needing an indexed join). `TableGroup.Create` enforces only the structural
+invariant (≥2 distinct table ids); the cross-aggregate checks (every member exists, is active,
+has `IsCombinable = true`, and isn't already in another active group) are
+`CreateTableGroupCommandHandler`'s job, same category split CLAUDE.md already draws elsewhere.
+**Create-only this phase** — no Update/Deactivate, no different from Section's own Phase-4
+minimalism before something forced its hand.
+
+**`CreateTableGroupCommandHandler` checks `ITableGroupsData.FindExistingTableGroupIdAsync`
+*before* any of the cross-aggregate validation, not after** — the same "replay's idempotency
+check must run before the existence check" pitfall Scheduling's hard-delete already hit
+(CLAUDE.md's Scheduling section above), showing up here in a different shape: a replay of an
+already-processed `OperationId` names tables that are now already grouped, because the first,
+real run is exactly what grouped them — checking "not already grouped" before checking for a
+replay fails the *second* call on a legitimate idempotent retry. Caught the same way as
+Scheduling's version: a failing test
+(`HandleAsync_OperationIdAlreadyProcessed_ShortCircuitsBeforeAnyValidationAndSkipsTheAuditWrite`)
+during development, not by inspection.
+
+**The read side — `ITableAvailabilityLookup`:** declared in `Mise.Modules.Tables.Contracts`
+(`GetCapacityInfoAsync(tableId) -> TableCapacityInfo?`, returning the table's own capacity, or —
+if it belongs to an active `TableGroup` — the *summed* Min/MaxCapacity across every member),
+implemented by a new class in `Mise.Modules.Tables.Infrastructure`, registered in DI at
+`Mise.ApiService`. `Mise.Modules.Reservations.Application` takes a constructor dependency on
+this interface directly and calls it from `TableAssignmentGuard` (shared by
+`CreateReservationCommandHandler`/`UpdateReservationCommandHandler`) — never on
+`Mise.Modules.Tables.Application`/`.Infrastructure`, which the boundary table still forbids.
+
+**Why `Mise.Modules.Tables.Infrastructure` may reference its own `Mise.Modules.Tables.Contracts`
+project** (a new `ProjectReference`, where none existed before): `ModuleBoundaryTests.
+Infrastructure_IsReferencedByNothingExceptTheCompositionRoot` only forbids *another* module's
+Domain/Application/Contracts from referencing a module's Infrastructure — it says nothing about
+a module's own Infrastructure implementing its own module's Contracts interface, which is
+exactly what a Contracts project is *for*. Confirmed empirically, not just by reading the rule:
+all 18 architecture tests stayed green after this reference was added.
+
+BR-01's own table-overlap enforcement (below) does **not** extend across a `TableGroup`'s other
+members — booking table T1 as part of a T1+T2 combo doesn't mark T2 as unavailable for a
+separate, independent booking. The charter's fixed `Reservation.TableId` schema (one table per
+reservation) has no representation for "this reservation occupies a set of tables," so this is a
+known, deliberate gap, not a Phase 6 bug — revisit if/when Phase 7's table-status wiring makes it
+matter in practice.
+
+### BR-01 — a database-enforced exclusion constraint, not just an application check
+
+docs/plan.md correction #1 lands here, verbatim: `CREATE EXTENSION btree_gist` then an `EXCLUDE
+USING gist (table_id WITH =, tstzrange(...) WITH &&) WHERE (status NOT IN ('Cancelled',
+'NoShow'))` constraint on `reservations.reservation` — the only way to close the TOCTOU race a
+check-then-insert can't (two concurrent requests can each pass an application-level check before
+either commits; there's no stale *row* to detect when the conflict is between two brand-new
+inserts). `ReservationsData` still runs a friendly, in-memory pre-check
+(`HasOverlapAsync` — bounded to a ±1-day window so it stays a cheap indexed lookup, with the
+exact overlap arithmetic done in memory since `DurationMinutes` addition isn't reliably
+EF-translatable inside a LINQ predicate) purely so the common, non-racing case gets a clean 409
+without ever reaching Postgres's raw constraint-violation error; the constraint itself — caught
+as a `PostgresException` with `SqlState` `23P01` — is what's actually authoritative. Both paths
+converge on the same `ReservationSaveOutcome.TableOverlap` → `Mise.SharedKernel.
+ReservationOverlapException` → `ReservationOverlapExceptionHandler` → 409, so the caller can't
+tell which path caught it. Proven by `CreateReservation_TwoConcurrentOverlappingInserts_
+ExactlyOneSucceeds`: two raw `NpgsqlConnection`s launched together via `Task.WhenAll`, bypassing
+the API/Application layers entirely (the "hard subsystem" test shape docs/plan.md's "Testing the
+hard subsystems" section describes). An earlier version added a `System.Threading.Barrier` to
+force both `INSERT`s into flight before either commits — dropped after it caused a real 30s
+timeout failure in practice: if either connection's `OpenAsync` is ever slow, the other blocks on
+the barrier indefinitely, for no actual gain, since Postgres's own locking is what makes the
+test valid regardless of the exact submission timing, not any C#-level synchronization.
+
+**A GiST exclusion constraint's index expression must be `IMMUTABLE`, and Postgres marks the
+built-in `timestamptz + interval` operator `STABLE`** (interval arithmetic involving
+months/days depends on the session's timezone across DST boundaries) — the constraint as
+originally written failed migration with `functions in index expression must be marked
+IMMUTABLE`. Fix: a `reservations.reservation_end_time(start_time, duration_minutes)` SQL
+function, declared `IMMUTABLE` despite Postgres never verifying that claim — safe here because
+`DurationMinutes` is always a pure minutes-only interval, which Postgres adds straight to the
+microsecond-precision UTC instant with no calendar/timezone-dependent step, unlike a month/day
+interval. Don't rediscover this the hard way the next time an exclusion constraint needs computed
+range bounds.
+
+### `xmin`/`ETag` concurrency, extended to `Reservation`
+
+docs/plan.md correction #5 named `Table`/`Reservation` as the two concurrency-tracked
+aggregates from the start, but Phase 2's create-only skeleton had no `Update` yet to protect, so
+`xmin` landed on `Table` in Phase 4 and lands on `Reservation` only now that `Update`/`Cancel`
+exist — same reasoning, just a phase later. Identical shadow-property-to-`xmin` mapping, `ETag`
+helper, `PreconditionRequiredException`/428, `ConcurrencyConflictException`/409 pattern as
+Tables (see that section above); `ReservationsData.SaveWithConcurrencyCheckAsync` additionally
+distinguishes a version mismatch (`DbUpdateConcurrencyException`) from a table-overlap rejection
+(`DbUpdateException` wrapping the exclusion-violation `PostgresException`) — two different
+`catch` clauses, two different `ReservationSaveOutcome` values, two different exception types
+and HTTP statuses at the endpoint.
+
+### Search (US-02/FR-02)
+
+`IReservationsData.SearchReservationsAsync(query, date)` — a plain filtered read injected
+directly into `GET /api/reservations/search`, no separate query-handler class, same "no
+query-handler pattern exists for a plain projection" reasoning as Scheduling's
+`GetServicePeriodsForDateAsync`. `query` matches `CustomerName` or `CustomerPhone` via
+`EF.Functions.ILike` with a leading wildcard; `CustomerName`'s `pg_trgm` GIN index (charter §10)
+is what keeps that fast despite the leading `%` defeating a plain B-tree — `CustomerPhone` has
+only a plain B-tree (charter's own Key Indexes list), so a partial-phone search is currently an
+unindexed scan, acceptable at this data volume and revisitable if it ever isn't. `pg_trgm` and
+`btree_gist` are both created via `CREATE EXTENSION IF NOT EXISTS` inside the migration itself,
+**not** `Mise.MigrationService`'s `Program.cs`, even though docs/plan.md's original text
+suggested the latter — `MiseApiFixture`/`CustomWebApplicationFactory`'s integration tests call
+`ReservationsDbContext.Database.MigrateAsync()` directly, bypassing `MigrationService` entirely,
+so anything bootstrapped only there would never exist in the test database.
+
+### Default turn time (Decision #7)
+
+`ReservationDefaultsOptions.DefaultDurationMinutes` (90), bound from configuration
+(`IOptions<ReservationDefaultsOptions>`) at the composition root — a null `DurationMinutes` on
+`POST /api/reservations` falls back to it; `PATCH` has no such fallback (full-replace semantics,
+same as `UpdateTableCommand` — the caller always resends every editable field).
+
+### Scope boundaries — deliberate, not oversights
+
+- **No validation against Scheduling's service periods/closed days.** Scheduling's own Phase 5
+  section above already named this as Phase 6-or-later; this phase's charter refs (FR-01–03,
+  US-01, US-02) don't include FR-08, so a reservation can still be created outside any defined
+  service period. Revisit alongside a real Phase 7/8 need.
+- **`Seated`/`Completed`/`NoShow` stay unreachable.** `ReservationStatus` declares all five
+  values (same reasoning as `TableStatus` declaring `Reserved`/`Occupied` before Phase 7 drives
+  them), but no command transitions to anything but `Confirmed`/`Cancelled` yet — BR-04/BR-05
+  and the cross-module table-status event are Phase 7's concern.
+- **The Blazor UI only gained the `CustomerPhone` field FR-01 requires.** Unlike Tables/
+  Scheduling (which had no UI to begin with and deferred all of it), Reservations already had
+  Phase 2's walking-skeleton `ReservationForm` wired into a real page and E2E-tested — breaking
+  it wasn't an option once `CustomerPhone` became required. Search/edit/cancel/table-assignment
+  screens stay API-only, deferred to Phase 10 same as everything else.
 
 ## No mediator library (ADR-005)
 

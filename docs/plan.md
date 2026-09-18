@@ -509,7 +509,7 @@ Separated into "blocks work" and "has a safe configurable default", because the 
 | Question | Charter ref | Blocks | Why it can't ride as a default |
 |---|---|---|---|
 | **Hosting platform** | §7 Q2 | Phase 18 (deployment) only | Explicitly deferred to DevOps. Every module is host-agnostic, so nothing before phase 18 is blocked. Neon is now on the table since the DB is PostgreSQL and you already run Neon for FamilySplit. |
-| **How a "combinable set" of tables is modelled** | BR-07, §10 | Phase 6 | `IsCombinable` is a boolean on `Table`, which is not enough to express *which* tables combine with which. Either a self-referencing group entity or an explicit `TableGroup` is needed before BR-07 can be implemented or tested properly. ~6 sessions of runway. |
+| ~~**How a "combinable set" of tables is modelled**~~ — **RESOLVED in Phase 6** | BR-07, §10 | Phase 6 | ~~`IsCombinable` is a boolean on `Table`, which is not enough to express *which* tables combine with which. Either a self-referencing group entity or an explicit `TableGroup` is needed before BR-07 can be implemented or tested properly. ~6 sessions of runway.~~ Resolved: an explicit `TableGroup` entity, owned by the Tables module — see CLAUDE.md's ADR-006 and the charter §10 "Entity: TableGroup" for the full design. |
 | **Argon2id or ASP.NET Identity's default PBKDF2** | ADR-001 §Security | Phase 3 | The charter flags this honestly rather than silently using the framework default. The *choice* can be late; the **rehash-on-login migration path** cannot, so phase 3 ships that path regardless. |
 
 ### Safe as configurable defaults (decision #7)

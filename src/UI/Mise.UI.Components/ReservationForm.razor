@@ -7,6 +7,15 @@
     </div>
 
     <div class="form-field">
+        <label for="input-customer-phone">Phone number</label>
+        <input id="input-customer-phone" data-testid="input-customer-phone" @bind="CustomerPhone" @bind:event="oninput" />
+        @if (FieldErrors.TryGetValue("CustomerPhone", out var customerPhoneErrors))
+        {
+            <p data-testid="error-customer-phone" role="alert">@customerPhoneErrors[0]</p>
+        }
+    </div>
+
+    <div class="form-field">
         <label for="input-party-size">Party size</label>
         <input id="input-party-size" data-testid="input-party-size" type="number" @bind="PartySizeText" @bind:event="oninput" />
         @if (FieldErrors.TryGetValue("PartySize", out var partySizeErrors))

@@ -108,6 +108,32 @@ namespace Mise.Modules.Tables.Infrastructure.Persistence.Migrations
                     b.ToTable("table", "tables");
                 });
 
+            modelBuilder.Entity("Mise.Modules.Tables.Domain.TableGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.PrimitiveCollection<Guid[]>("TableIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("table_ids");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("table_group", "tables");
+                });
+
             modelBuilder.Entity("Mise.SharedKernel.Infrastructure.AuditLogEntry", b =>
                 {
                     b.Property<Guid>("Id")
