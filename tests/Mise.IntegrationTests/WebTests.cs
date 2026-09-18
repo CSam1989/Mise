@@ -12,9 +12,12 @@ public class WebTests
     // 30s was the dotnet-new-aspire-starter template's original default — too tight for a
     // cold CI runner's StartAsync, which pulls the Postgres container image, starts three
     // .NET processes (ApiService/MigrationService/Web), and runs EF migrations, all before
-    // the first health check can pass. Bumped once this became provably reachable in CI (the
-    // DCP-bundle fix that made StartAsync run at all also revealed this was too short).
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
+    // the first health check can pass. 120s wasn't enough either (still a plain
+    // TimeoutException, never a connection/container error — the clearest possible signal
+    // that this only ever needed more wall-clock time, not a config fix). Bumped again,
+    // generously: this is a one-off smoke test ("does the real app graph start?"), not
+    // something performance-sensitive, so erring high costs nothing but idle CI minutes.
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(240);
 
     [Fact]
     public async Task GetWebResourceRootReturnsOkStatusCode()
@@ -38,7 +41,11 @@ public class WebTests
             // Override the logging filters from the app's configuration
             logging.AddFilter(appHost.Environment.ApplicationName, LogLevel.Debug);
             logging.AddFilter("Aspire.", LogLevel.Debug);
-            // To output logs to the xUnit.net ITestOutputHelper, consider adding a package from https://www.nuget.org/packages?q=xunit+logging
+            // Surfaces the above in the failing test's own output — see
+            // XunitTestOutputLoggerProvider's doc comment for why this matters here
+            // specifically: a timeout with no captured logs gives no clue which resource
+            // stalled, which is exactly what happened debugging this test in CI.
+            logging.AddProvider(new XunitTestOutputLoggerProvider());
         });
         appHost.Services.ConfigureHttpClientDefaults(clientBuilder =>
         {
