@@ -32,6 +32,12 @@ public interface IReservationsData
     Task<ReservationSaveResult> CancelReservationAsync(
         Reservation reservation, uint expectedVersion, Guid operationId, CancellationToken cancellationToken);
 
+    /// <summary>Phase 7/BR-05. Same "never produces TableOverlap" reasoning as
+    /// <see cref="CancelReservationAsync"/> — flipping Status to NoShow without touching TableId
+    /// or the time window cannot create a new overlap.</summary>
+    Task<ReservationSaveResult> MarkNoShowAsync(
+        Reservation reservation, uint expectedVersion, Guid operationId, CancellationToken cancellationToken);
+
     /// <summary>US-02/FR-02: <paramref name="query"/> matches CustomerName (pg_trgm-backed) or
     /// CustomerPhone (partial match), <paramref name="date"/> filters to that calendar date —
     /// either, both, or neither may be supplied. A plain filtered read injected directly into

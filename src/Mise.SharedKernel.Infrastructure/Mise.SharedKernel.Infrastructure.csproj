@@ -6,10 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <!-- Deliberately zero PackageReference entries, same reasoning as Mise.SharedKernel: the
-       cross-cutting IAuditWriter port and AuditLogEntry shape must not force EF Core (or any
-       other package) onto every module's Application project that depends on this one. Each
-       module's own Infrastructure project owns the EF mapping for AuditLogEntry. -->
+  <!-- IAuditWriter/AuditLogEntry still force nothing EF-specific onto consumers. Phase 7 adds
+       two small, EF-free packages for DomainEventPublisher: DI abstractions (to resolve
+       IDomainEventHandler<T> instances) and Logging abstractions (CLAUDE.md's [LoggerMessage]
+       standard applies here too, same "declare it if you reference it by name" CPM convention
+       used elsewhere). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Mise.SharedKernel\Mise.SharedKernel.csproj" />

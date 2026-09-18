@@ -264,30 +264,17 @@ public class TablesEndpointTests(MiseApiFixture fixture)
         var created = await ManagerClient.PostAsJsonAsync("/api/tables", ValidBody(sectionId, name: "Occupied Table"), CT);
         var createdJson = await created.Content.ReadFromJsonAsync<JsonDocument>(CT);
         var tableId = createdJson!.RootElement.GetProperty("id").GetGuid();
+        var createEtag = created.Headers.ETag!.Tag;
 
-        // No endpoint sets a table's status away from Available until Phase 7 — manufacturing
-        // the Occupied state directly via SQL is the same deliberate technique
-        // GlobalExceptionHandlerTests (Phase 3) uses for a state no production code path can
-        // reach yet, rather than adding test-only production code. The raw UPDATE itself also
-        // advances xmin, so the ETag captured at creation is now stale — re-read the current
-        // version afterward, or this would (mis)fire the concurrency 409 path instead of the
-        // domain-rule one this test actually means to prove.
-        string currentEtag;
-        await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
+        // Phase 7's real PATCH /api/tables/{id}/status (FR-06) now exists — no more manufacturing
+        // the Occupied state via raw SQL the way this test had to before that endpoint existed.
+        var statusRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{tableId}/status")
         {
-            await connection.OpenAsync(CT);
-            await using (var update = connection.CreateCommand())
-            {
-                update.CommandText = "update tables.\"table\" set status = 'Occupied' where id = @id";
-                update.Parameters.AddWithValue("id", tableId);
-                await update.ExecuteNonQueryAsync(CT);
-            }
-
-            await using var select = connection.CreateCommand();
-            select.CommandText = "select xmin::text from tables.\"table\" where id = @id";
-            select.Parameters.AddWithValue("id", tableId);
-            currentEtag = $"\"{await select.ExecuteScalarAsync(CT)}\"";
-        }
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "Occupied" }),
+        };
+        statusRequest.Headers.TryAddWithoutValidation("If-Match", createEtag);
+        var statusResponse = await ManagerClient.SendAsync(statusRequest, CT);
+        var currentEtag = statusResponse.Headers.ETag!.Tag;
 
         var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{tableId}/deactivate")
         {
@@ -300,5 +287,177 @@ public class TablesEndpointTests(MiseApiFixture fixture)
             because: "docs/plan.md correction #13 — deactivating an Occupied table is blocked with a clear reason, not a silent failure (US-04's edge case).");
         var rawBody = await response.Content.ReadAsStringAsync(CT);
         rawBody.Should().Contain("Occupied");
+    }
+
+    // --- Change status (FR-06) ----------------------------------------------------------------
+
+    private async Task<(Guid Id, string ETag)> CreateTableWithETagAsync()
+    {
+        var sectionId = await CreateSectionAsync();
+        var response = await ManagerClient.PostAsJsonAsync("/api/tables", ValidBody(sectionId), CT);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        return (json!.RootElement.GetProperty("id").GetGuid(), response.Headers.ETag!.Tag);
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_MissingIfMatch_Returns428()
+    {
+        var (id, _) = await CreateTableWithETagAsync();
+
+        var response = await ManagerClient.PatchAsJsonAsync($"/api/tables/{id}/status", new { OperationId = Guid.NewGuid(), Status = "Occupied" }, CT);
+
+        response.StatusCode.Should().Be((HttpStatusCode)428);
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_TableDoesNotExist_Returns404()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{Guid.NewGuid()}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "Occupied" }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", "\"1\"");
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_InvalidStatusValue_Returns400WithFieldError()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "OnFire" }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetProperty("errors").GetProperty("Status")[0].GetString()
+            .Should().Be("Status must be one of: Available, Reserved, Occupied, NeedsCleaning, Blocked.");
+    }
+
+    [Theory]
+    [InlineData("Occupied")]
+    [InlineData("NeedsCleaning")]
+    [InlineData("Blocked")]
+    [InlineData("Reserved")]
+    public async Task PatchTableStatus_ValidStatusDifferentFromCurrent_Returns200AndUpdatesStatus(string status)
+    {
+        // A freshly created table already starts Available (excluded from this theory — setting
+        // it to the value it already has is a genuine no-op at the SQL level, since EF Core
+        // skips emitting an UPDATE for an unchanged property, so xmin correctly does not advance
+        // for that case; PatchTableStatus_SameStatusAsCurrent_Returns200WithUnchangedETag below
+        // covers it instead).
+        var (id, etag) = await CreateTableWithETagAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = status }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.ETag!.Tag.Should().NotBe(etag, because: "a successful status change to a genuinely different value must advance the version.");
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetProperty("status").GetString().Should().Be(status);
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_SameStatusAsCurrent_Returns200WithUnchangedETag()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "Available" }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            because: "FR-06 has no transition guard, including setting a status to the value it already has.");
+        response.Headers.ETag!.Tag.Should().Be(etag,
+            because: "EF Core skips emitting an UPDATE for a property whose value didn't change, so xmin does not advance.");
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_ValidIfMatch_WritesExactlyOneMatchingAuditLogEntry()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "NeedsCleaning" }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        await ManagerClient.SendAsync(request, CT);
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and action = 'StatusChanged'";
+        command.Parameters.AddWithValue("id", id);
+        (await command.ExecuteScalarAsync(CT)).Should().Be(1L);
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_SameOperationIdTwice_ChangesOnlyOnce()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+        var body = new { OperationId = Guid.NewGuid(), Status = "Blocked" };
+
+        var request1 = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status") { Content = JsonContent.Create(body) };
+        request1.Headers.TryAddWithoutValidation("If-Match", etag);
+        var first = await ManagerClient.SendAsync(request1, CT);
+
+        var request2 = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status") { Content = JsonContent.Create(body) };
+        request2.Headers.TryAddWithoutValidation("If-Match", etag);
+        var second = await ManagerClient.SendAsync(request2, CT);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.OK, because: "a replayed OperationId must still succeed — idempotent, not rejected.");
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and action = 'StatusChanged'";
+        command.Parameters.AddWithValue("id", id);
+        (await command.ExecuteScalarAsync(CT)).Should().Be(1L, because: "the replay must not write a second audit entry for the same effect.");
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_CallerIsFloorStaff_Returns200()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+        var floorStaffClient = fixture.CreateAuthenticatedClient(role: "FloorStaff");
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "Occupied" }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+
+        var response = await floorStaffClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            because: "FR-06 is deliberately FloorStaff-or-Manager, unlike Create/Update/Deactivate's Manager-only configuration actions.");
+    }
+
+    [Fact]
+    public async Task PatchTableStatus_Unauthenticated_Returns401()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "Occupied" }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+
+        var response = await fixture.CreateClient().SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

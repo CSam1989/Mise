@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Mise.Modules.Tables.Application.ChangeTableStatus;
 using Mise.Modules.Tables.Application.CreateTable;
 using Mise.Modules.Tables.Application.DeactivateTable;
 using Mise.Modules.Tables.Application.Ports;
@@ -10,10 +11,13 @@ namespace Mise.ApiService.Tables;
 
 /// <summary>
 /// Every mutating endpoint here also sets the response's ETag header (docs/plan.md
-/// correction #5) — Update/Deactivate additionally require a matching If-Match request header,
-/// checked before the command handler runs at all: a missing/malformed one is purely an
-/// HTTP-shape concern (see PreconditionRequiredException's doc comment), not something the
-/// Application layer should have to know about.
+/// correction #5) — Update/Deactivate/ChangeStatus additionally require a matching If-Match
+/// request header, checked before the command handler runs at all: a missing/malformed one is
+/// purely an HTTP-shape concern (see PreconditionRequiredException's doc comment), not something
+/// the Application layer should have to know about. FR-06's status-change endpoint is
+/// deliberately <c>FloorStaff</c>-or-<c>Manager</c>, unlike Create/Update/Deactivate's
+/// Manager-only Section/Table configuration actions — this one is an operational, day-of-service
+/// action (the charter's own sample contract names the same Auth line), not configuration.
 /// </summary>
 internal static class TablesEndpoints
 {
@@ -23,6 +27,7 @@ internal static class TablesEndpoints
         app.MapGet("/api/tables/floor-plan", GetFloorPlanAsync).RequireAuthorization("FloorStaff");
         app.MapPatch("/api/tables/{id:guid}", UpdateTableAsync).RequireAuthorization("Manager");
         app.MapPatch("/api/tables/{id:guid}/deactivate", DeactivateTableAsync).RequireAuthorization("Manager");
+        app.MapPatch("/api/tables/{id:guid}/status", ChangeTableStatusAsync).RequireAuthorization("FloorStaff");
         return app;
     }
 
@@ -98,6 +103,32 @@ internal static class TablesEndpoints
 
         var performedByStaffId = Guid.Parse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var command = new DeactivateTableCommand(request.OperationId, id, expectedVersion, performedByStaffId);
+
+        var result = await handler.HandleAsync(command, cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        httpContext.Response.Headers.ETag = ETag.Format(result.Version);
+        return Results.Ok(ToDto(new TableWithVersion(result.Table, result.Version)));
+    }
+
+    private static async Task<IResult> ChangeTableStatusAsync(
+        Guid id,
+        ChangeTableStatusRequest request,
+        ChangeTableStatusCommandHandler handler,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!ETag.TryParse(httpContext.Request.Headers["If-Match"].ToString(), out var expectedVersion))
+        {
+            throw new PreconditionRequiredException(
+                "An If-Match header carrying the table's current version (from a prior GET/POST/PATCH response's ETag) is required to change its status.");
+        }
+
+        var performedByStaffId = Guid.Parse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var command = new ChangeTableStatusCommand(request.OperationId, id, expectedVersion, request.Status, performedByStaffId);
 
         var result = await handler.HandleAsync(command, cancellationToken);
         if (result is null)

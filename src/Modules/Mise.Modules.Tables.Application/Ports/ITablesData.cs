@@ -24,6 +24,13 @@ public interface ITablesData
 
     Task<TableSaveResult> DeactivateTableAsync(Table table, uint expectedVersion, Guid operationId, CancellationToken cancellationToken);
 
+    /// <summary>FR-06 (ChangeTableStatusCommandHandler) and ADR-007's two cross-module event
+    /// handlers (ReservationSeatedTableOccupiedHandler / ReservationTableVacatedHandler) all
+    /// call this — same implementation as <see cref="UpdateTableAsync"/>, a distinctly-named
+    /// gateway method purely for audit/log clarity, same convention <see cref="DeactivateTableAsync"/>
+    /// already established.</summary>
+    Task<TableSaveResult> ChangeTableStatusAsync(Table table, uint expectedVersion, Guid operationId, CancellationToken cancellationToken);
+
     /// <summary>Backs DeactivateSectionCommandHandler's guard — a cross-aggregate,
     /// database-dependent check Section itself has no way to answer (see Section's doc
     /// comment).</summary>

@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Mise.Modules.Reservations.Application.CancelReservation;
 using Mise.Modules.Reservations.Application.CreateReservation;
+using Mise.Modules.Reservations.Application.MarkReservationNoShow;
 using Mise.Modules.Reservations.Application.Ports;
+using Mise.Modules.Reservations.Application.SeatReservation;
 using Mise.Modules.Reservations.Application.UpdateReservation;
 using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Reservations.Domain;
@@ -23,6 +25,8 @@ internal static class ReservationsEndpoints
         app.MapGet("/api/reservations/search", SearchReservationsAsync).RequireAuthorization("FloorStaff");
         app.MapPatch("/api/reservations/{id:guid}", UpdateReservationAsync).RequireAuthorization("FloorStaff");
         app.MapPatch("/api/reservations/{id:guid}/cancel", CancelReservationAsync).RequireAuthorization("FloorStaff");
+        app.MapPatch("/api/reservations/{id:guid}/seat", SeatReservationAsync).RequireAuthorization("FloorStaff");
+        app.MapPatch("/api/reservations/{id:guid}/no-show", MarkReservationNoShowAsync).RequireAuthorization("FloorStaff");
         return app;
     }
 
@@ -99,6 +103,58 @@ internal static class ReservationsEndpoints
 
         var performedByStaffId = Guid.Parse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var command = new CancelReservationCommand(request.OperationId, id, expectedVersion, performedByStaffId);
+
+        var result = await handler.HandleAsync(command, cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        httpContext.Response.Headers.ETag = ETag.Format(result.Version);
+        return Results.Ok(ToDto(result.Reservation, result.Version));
+    }
+
+    private static async Task<IResult> SeatReservationAsync(
+        Guid id,
+        SeatReservationRequest request,
+        SeatReservationCommandHandler handler,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!ETag.TryParse(httpContext.Request.Headers["If-Match"].ToString(), out var expectedVersion))
+        {
+            throw new PreconditionRequiredException(
+                "An If-Match header carrying the reservation's current version (from a prior GET/POST/PATCH response's ETag) is required to seat it.");
+        }
+
+        var performedByStaffId = Guid.Parse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var command = new SeatReservationCommand(request.OperationId, id, expectedVersion, request.TableId, performedByStaffId);
+
+        var result = await handler.HandleAsync(command, cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        httpContext.Response.Headers.ETag = ETag.Format(result.Version);
+        return Results.Ok(ToDto(result.Reservation, result.Version));
+    }
+
+    private static async Task<IResult> MarkReservationNoShowAsync(
+        Guid id,
+        MarkReservationNoShowRequest request,
+        MarkReservationNoShowCommandHandler handler,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!ETag.TryParse(httpContext.Request.Headers["If-Match"].ToString(), out var expectedVersion))
+        {
+            throw new PreconditionRequiredException(
+                "An If-Match header carrying the reservation's current version (from a prior GET/POST/PATCH response's ETag) is required to mark it no-show.");
+        }
+
+        var performedByStaffId = Guid.Parse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var command = new MarkReservationNoShowCommand(request.OperationId, id, expectedVersion, performedByStaffId);
 
         var result = await handler.HandleAsync(command, cancellationToken);
         if (result is null)

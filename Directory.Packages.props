@@ -114,4 +114,16 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.12" />
   </ItemGroup>
+
+  <!-- Phase 7 — Seating & table status. Mise.SharedKernel.Infrastructure's DomainEventPublisher
+       resolves IDomainEventHandler<T> instances via IServiceProvider.GetServices<T> (ADR-005 —
+       no mediator library, no reflection-based discovery), which needs the DI *abstractions*
+       package only — never the concrete Microsoft.Extensions.DependencyInjection container
+       implementation, which would tie SharedKernel.Infrastructure to a specific DI container.
+       Mise.UnitTests separately takes the concrete container package below, purely to build a
+       real ServiceProvider in DomainEventPublisherTests — a test concern, not a production one. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+  </ItemGroup>
 </Project>

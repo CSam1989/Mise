@@ -660,4 +660,378 @@ public class ReservationsEndpointTests(MiseApiFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+
+    // --- Seat (FR-05/BR-04, ADR-007) ---------------------------------------------------------
+
+    private async Task<Guid> GetTableStatusAsync(Guid tableId)
+    {
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select id from tables.table where id = @id and status = @status";
+        command.Parameters.AddWithValue("id", tableId);
+        command.Parameters.AddWithValue("status", "Occupied");
+        var result = await command.ExecuteScalarAsync(CT);
+        return result is Guid id ? id : Guid.Empty;
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_MissingIfMatch_Returns428()
+    {
+        var (id, _) = await CreateReservationAsync();
+
+        var response = await ManagerClient.PatchAsJsonAsync(
+            $"/api/reservations/{id}/seat", new { OperationId = Guid.NewGuid(), TableId = Guid.NewGuid() }, CT);
+
+        response.StatusCode.Should().Be((HttpStatusCode)428);
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_ReservationDoesNotExist_Returns404()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{Guid.NewGuid()}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = Guid.NewGuid() }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", "\"1\"");
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_TableIdEmpty_Returns400WithFieldError()
+    {
+        var (id, etag) = await CreateReservationAsync();
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = Guid.Empty }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, because: "BR-04 — cannot be marked Seated without an assigned table.");
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetProperty("errors").GetProperty("TableId")[0].GetString()
+            .Should().Be("TableId is required to seat a reservation.");
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_PartySizeExceedsTableCapacity_Returns400WithFieldError()
+    {
+        var (id, etag) = await CreateReservationAsync(); // PartySize 4 (ValidBody's default)
+        var tableId = await CreateTableAsync(minCapacity: 1, maxCapacity: 2);
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = tableId }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, because: "BR-07 applies to Seat exactly as it does to Create/Update.");
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetProperty("errors").GetProperty("PartySize")[0].GetString()
+            .Should().Be("PartySize does not fit the assigned table's capacity.");
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_ValidIfMatch_Returns200AndStatusSeated()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = tableId }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetProperty("status").GetString().Should().Be("Seated");
+        json.RootElement.GetProperty("tableId").GetGuid().Should().Be(tableId);
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_MarksTableOccupied_InSameRequest()
+    {
+        // RISK-01 / docs/plan.md correction #10's proof: the cross-module side effect (ADR-007)
+        // is awaited synchronously within the same request — by the time the API response comes
+        // back, the Table row is already committed as Occupied, provable with a plain read
+        // immediately after, no polling or retry loop needed.
+        var (id, etag) = await CreateReservationAsync();
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = tableId }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await GetTableStatusAsync(tableId)).Should().Be(tableId,
+            because: "ReservationSeated must already have been dispatched and handled before the /seat response returns.");
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_ValidIfMatch_WritesExactlyOneMatchingAuditLogEntryForBothReservationAndTable()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = tableId }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        await ManagerClient.SendAsync(request, CT);
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var reservationCommand = connection.CreateCommand();
+        reservationCommand.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and entity_type = 'Reservation' and action = 'Seated'";
+        reservationCommand.Parameters.AddWithValue("id", id);
+        (await reservationCommand.ExecuteScalarAsync(CT)).Should().Be(1L);
+
+        await using var tableCommand = connection.CreateCommand();
+        tableCommand.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and entity_type = 'Table' and action = 'Occupied'";
+        tableCommand.Parameters.AddWithValue("id", tableId);
+        (await tableCommand.ExecuteScalarAsync(CT)).Should().Be(1L,
+            because: "ReservationSeatedTableOccupiedHandler writes its own audit entry on the Table side.");
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_SameOperationIdTwice_SeatsOnlyOnce()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+        var body = new { OperationId = Guid.NewGuid(), TableId = tableId };
+
+        var request1 = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat") { Content = JsonContent.Create(body) };
+        request1.Headers.TryAddWithoutValidation("If-Match", etag);
+        var first = await ManagerClient.SendAsync(request1, CT);
+
+        var request2 = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat") { Content = JsonContent.Create(body) };
+        request2.Headers.TryAddWithoutValidation("If-Match", etag);
+        var second = await ManagerClient.SendAsync(request2, CT);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.OK, because: "a replayed OperationId must still succeed — idempotent, not rejected.");
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and action = 'Seated'";
+        command.Parameters.AddWithValue("id", id);
+        (await command.ExecuteScalarAsync(CT)).Should().Be(1L, because: "the replay must not write a second audit entry for the same effect.");
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_CallerIsFloorStaff_Returns200()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+        var floorStaffClient = fixture.CreateAuthenticatedClient(role: "FloorStaff");
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = tableId }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+
+        var response = await floorStaffClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            because: "FR-05 names no permission boundary between FloorStaff and Manager, same as Create/Update/Cancel.");
+    }
+
+    [Fact]
+    public async Task PatchReservationSeat_Unauthenticated_Returns401()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = Guid.NewGuid() }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+
+        var response = await fixture.CreateClient().SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // --- No-show (BR-05) -----------------------------------------------------------------
+
+    [Fact]
+    public async Task PatchReservationNoShow_MissingIfMatch_Returns428()
+    {
+        var (id, _) = await CreateReservationAsync();
+
+        var response = await ManagerClient.PatchAsJsonAsync($"/api/reservations/{id}/no-show", new { OperationId = Guid.NewGuid() }, CT);
+
+        response.StatusCode.Should().Be((HttpStatusCode)428);
+    }
+
+    [Fact]
+    public async Task PatchReservationNoShow_ReservationDoesNotExist_Returns404()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{Guid.NewGuid()}/no-show")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", "\"1\"");
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task PatchReservationNoShow_ValidIfMatch_Returns200AndStatusNoShow()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/no-show")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+
+        var response = await ManagerClient.SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetProperty("status").GetString().Should().Be("NoShow");
+    }
+
+    [Fact]
+    public async Task PatchReservationNoShow_ValidIfMatch_WritesExactlyOneMatchingAuditLogEntry()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/no-show")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        await ManagerClient.SendAsync(request, CT);
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and action = 'NoShow'";
+        command.Parameters.AddWithValue("id", id);
+        (await command.ExecuteScalarAsync(CT)).Should().Be(1L);
+    }
+
+    [Fact]
+    public async Task PatchReservationNoShow_SameOperationIdTwice_MarksOnlyOnce()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var body = new { OperationId = Guid.NewGuid() };
+
+        var request1 = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/no-show") { Content = JsonContent.Create(body) };
+        request1.Headers.TryAddWithoutValidation("If-Match", etag);
+        var first = await ManagerClient.SendAsync(request1, CT);
+
+        var request2 = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/no-show") { Content = JsonContent.Create(body) };
+        request2.Headers.TryAddWithoutValidation("If-Match", etag);
+        var second = await ManagerClient.SendAsync(request2, CT);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.OK, because: "a replayed OperationId must still succeed — idempotent, not rejected.");
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from shared.audit_log_entry where entity_id = @id and action = 'NoShow'";
+        command.Parameters.AddWithValue("id", id);
+        (await command.ExecuteScalarAsync(CT)).Should().Be(1L, because: "the replay must not write a second audit entry for the same effect.");
+    }
+
+    [Fact]
+    public async Task PatchReservationNoShow_Unauthenticated_Returns401()
+    {
+        var (id, etag) = await CreateReservationAsync();
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/no-show")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+
+        var response = await fixture.CreateClient().SendAsync(request, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // --- BR-05: cancel/no-show frees the table, unless another active reservation holds it ---
+
+    private async Task<(Guid ReservationId, string ETag)> SeatAsync(Guid reservationId, string etag, Guid tableId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{reservationId}/seat")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), TableId = tableId }),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", etag);
+        var response = await ManagerClient.SendAsync(request, CT);
+        return (reservationId, response.Headers.ETag!.Tag);
+    }
+
+    [Fact]
+    public async Task PatchReservationCancel_SeatedReservationOnItsOwn_ReleasesTableBackToAvailable()
+    {
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+        var (id, createEtag) = await CreateReservationAsync();
+        var (_, seatEtag) = await SeatAsync(id, createEtag, tableId);
+        (await GetTableStatusAsync(tableId)).Should().Be(tableId, because: "the table must be Occupied right after seating.");
+
+        var cancelRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/cancel")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        cancelRequest.Headers.TryAddWithoutValidation("If-Match", seatEtag);
+        var response = await ManagerClient.SendAsync(cancelRequest, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GetTableStatusAsync(tableId)).Should().Be(Guid.Empty,
+            because: "BR-05 — cancelling the only reservation holding the table must free it back to Available.");
+    }
+
+    [Fact]
+    public async Task PatchReservationNoShow_AnotherActiveReservationCurrentlyHoldsTheTable_TableStaysOccupied()
+    {
+        // BR-05's "unless another active reservation holds it": a back-to-back, non-overlapping
+        // pairing (BR-01 forbids overlap, but adjacent windows are legal) where the earlier
+        // reservation's window has already ended and the later one's has already begun, so both
+        // can legitimately be active on the same table without violating BR-01 at the same
+        // instant this test checks.
+        var tableId = await CreateTableAsync(minCapacity: 2, maxCapacity: 6);
+        var now = DateTimeOffset.UtcNow;
+
+        var earlierResponse = await ManagerClient.PostAsJsonAsync(
+            "/api/reservations",
+            ValidBody(tableId: tableId, reservationDateTime: now.AddMinutes(-90), durationMinutes: 60, customerName: "Earlier"),
+            CT);
+        var earlierJson = await earlierResponse.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        var earlierId = earlierJson!.RootElement.GetProperty("id").GetGuid();
+        var earlierEtag = earlierResponse.Headers.ETag!.Tag;
+        var (_, seatedEtag) = await SeatAsync(earlierId, earlierEtag, tableId);
+
+        var laterResponse = await ManagerClient.PostAsJsonAsync(
+            "/api/reservations",
+            ValidBody(tableId: tableId, reservationDateTime: now.AddMinutes(-5), durationMinutes: 90, customerName: "Later"),
+            CT);
+        laterResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            because: "the earlier reservation's window (ended 30 minutes ago) does not overlap the later one's (started 5 minutes ago).");
+
+        var noShowRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{earlierId}/no-show")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        noShowRequest.Headers.TryAddWithoutValidation("If-Match", seatedEtag);
+        var response = await ManagerClient.SendAsync(noShowRequest, CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GetTableStatusAsync(tableId)).Should().Be(tableId,
+            because: "the later, still-Confirmed reservation currently covers 'now' on the same table — BR-05's 'unless' clause.");
+    }
 }

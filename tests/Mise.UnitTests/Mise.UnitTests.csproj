@@ -12,6 +12,10 @@
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="FluentValidation" />
+    <!-- Phase 7 — DomainEventPublisherTests builds a real ServiceProvider rather than mocking
+         IServiceProvider.GetServices<T> (an extension method, awkward to mock meaningfully with
+         Moq) — a test-only use of the concrete DI container. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
@@ -25,6 +29,10 @@
     <ProjectReference Include="..\..\src\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Domain\Mise.Modules.Reservations.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
+    <!-- Phase 7 — SeatReservationCommandHandlerTests/CancelReservationCommandHandlerTests/etc.
+         construct/assert on the ReservationSeated/ReservationTableVacated Contracts events
+         directly, and the Tables event-handler tests below consume the same types. -->
+    <ProjectReference Include="..\..\src\Modules\Mise.Modules.Reservations.Contracts\Mise.Modules.Reservations.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Domain\Mise.Modules.StaffIdentity.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.StaffIdentity.Application\Mise.Modules.StaffIdentity.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Mise.Modules.Tables.Domain\Mise.Modules.Tables.Domain.csproj" />

@@ -27,6 +27,13 @@ public static class TablesPersistenceServiceCollectionExtensions
         services.AddScoped<ITableAvailabilityLookup, TableAvailabilityLookup>();
         services.AddScoped<IAuditWriter, AuditWriter<TablesDbContext>>();
 
+        // ADR-007's cross-module event handlers (ReservationSeatedTableOccupiedHandler /
+        // ReservationTableVacatedHandler) are deliberately NOT registered here: this extension
+        // method is Tables' own persistence wiring, and "which other module's event this module
+        // reacts to" is a cross-module composition concern — it belongs at Mise.ApiService's
+        // composition root (Program.cs), alongside every other cross-module DI decision, not
+        // buried inside one module's own extension method.
+
         return services;
     }
 }

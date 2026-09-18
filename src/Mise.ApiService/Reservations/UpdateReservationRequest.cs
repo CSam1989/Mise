@@ -12,3 +12,7 @@ internal sealed record UpdateReservationRequest(
     string? Notes = null);
 
 internal sealed record CancelReservationRequest(Guid OperationId);
+
+internal sealed record SeatReservationRequest(Guid OperationId, Guid TableId);
+
+internal sealed record MarkReservationNoShowRequest(Guid OperationId);

@@ -11,7 +11,10 @@ using Mise.ApiService.Tables;
 using Mise.Modules.Reservations.Application;
 using Mise.Modules.Reservations.Application.CancelReservation;
 using Mise.Modules.Reservations.Application.CreateReservation;
+using Mise.Modules.Reservations.Application.MarkReservationNoShow;
+using Mise.Modules.Reservations.Application.SeatReservation;
 using Mise.Modules.Reservations.Application.UpdateReservation;
+using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Reservations.Infrastructure;
 using Mise.Modules.Scheduling.Application.CreateServicePeriod;
 using Mise.Modules.Scheduling.Application.DeleteServicePeriod;
@@ -21,6 +24,8 @@ using Mise.Modules.StaffIdentity.Application.Login;
 using Mise.Modules.StaffIdentity.Application.RegisterStaff;
 using Mise.Modules.StaffIdentity.Domain;
 using Mise.Modules.StaffIdentity.Infrastructure;
+using Mise.Modules.Tables.Application;
+using Mise.Modules.Tables.Application.ChangeTableStatus;
 using Mise.Modules.Tables.Application.CreateSection;
 using Mise.Modules.Tables.Application.CreateTable;
 using Mise.Modules.Tables.Application.CreateTableGroup;
@@ -30,6 +35,7 @@ using Mise.Modules.Tables.Application.UpdateSection;
 using Mise.Modules.Tables.Application.UpdateTable;
 using Mise.Modules.Tables.Infrastructure;
 using Mise.ServiceDefaults;
+using Mise.SharedKernel.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +56,13 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddSingleton(TimeProvider.System);
+
+// ADR-007 (CLAUDE.md's Reservations Phase 7 section) — the hand-rolled cross-module domain
+// event publisher (ADR-005, no mediator library). Scoped, not Singleton: it captures
+// IServiceProvider and resolves IDomainEventHandler<T> instances from it, which must be the
+// per-request scoped provider so a Scoped handler (e.g. one depending on a per-request
+// DbContext) resolves correctly rather than being served from the root provider.
+builder.Services.AddScoped<IDomainEventPublisher, DomainEventPublisher>();
 
 // JWT-bearer validation — unchanged in shape since Phase 2's placeholder spine (CLAUDE.md:
 // "the validation side already wired here" survives StaffIdentity landing). Only the minting
@@ -96,6 +109,9 @@ builder.Services.AddScoped<IValidator<CreateReservationCommand>, CreateReservati
 builder.Services.AddScoped<UpdateReservationCommandHandler>();
 builder.Services.AddScoped<IValidator<UpdateReservationCommand>, UpdateReservationCommandValidator>();
 builder.Services.AddScoped<CancelReservationCommandHandler>();
+builder.Services.AddScoped<SeatReservationCommandHandler>();
+builder.Services.AddScoped<IValidator<SeatReservationCommand>, SeatReservationCommandValidator>();
+builder.Services.AddScoped<MarkReservationNoShowCommandHandler>();
 
 builder.Services.AddStaffIdentityPersistence(reservationsConnectionString);
 builder.Services.AddStaffIdentityJwtIssuer(jwtSigningKey);
@@ -115,8 +131,17 @@ builder.Services.AddScoped<IValidator<CreateTableCommand>, CreateTableCommandVal
 builder.Services.AddScoped<UpdateTableCommandHandler>();
 builder.Services.AddScoped<IValidator<UpdateTableCommand>, UpdateTableCommandValidator>();
 builder.Services.AddScoped<DeactivateTableCommandHandler>();
+builder.Services.AddScoped<ChangeTableStatusCommandHandler>();
+builder.Services.AddScoped<IValidator<ChangeTableStatusCommand>, ChangeTableStatusCommandValidator>();
 builder.Services.AddScoped<CreateTableGroupCommandHandler>();
 builder.Services.AddScoped<IValidator<CreateTableGroupCommand>, CreateTableGroupCommandValidator>();
+
+// ADR-007's cross-module event handlers — Tables reacting to Reservations' events. Registered
+// here, not inside AddTablesPersistence, because "which other module's event this module
+// reacts to" is a cross-module composition decision that belongs at the composition root (see
+// TablesPersistenceServiceCollectionExtensions' own doc comment on this).
+builder.Services.AddScoped<IDomainEventHandler<ReservationSeated>, ReservationSeatedTableOccupiedHandler>();
+builder.Services.AddScoped<IDomainEventHandler<ReservationTableVacated>, ReservationTableVacatedHandler>();
 
 builder.Services.AddSchedulingPersistence(reservationsConnectionString);
 builder.Services.AddScoped<CreateServicePeriodCommandHandler>();

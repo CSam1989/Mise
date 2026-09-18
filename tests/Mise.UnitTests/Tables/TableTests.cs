@@ -123,9 +123,74 @@ public class TableTests
         table.IsActive.Should().BeFalse(because: "only Reserved/Occupied block deactivation — every other status is fair game.");
     }
 
-    /// <summary>No public mutator sets Status yet (Phase 7 adds one) — reflection is the only
-    /// way a unit test can reach the Reserved/Occupied boundary today, which is itself
-    /// evidence the guard is exercising real, if not-yet-reachable-in-production, logic.</summary>
-    private static void SetStatus(Table table, TableStatus status) =>
-        typeof(Table).GetProperty(nameof(Table.Status))!.SetValue(table, status);
+    [Theory]
+    [InlineData(TableStatus.Available)]
+    [InlineData(TableStatus.Reserved)]
+    [InlineData(TableStatus.Occupied)]
+    [InlineData(TableStatus.NeedsCleaning)]
+    [InlineData(TableStatus.Blocked)]
+    public void SetStatus_AnyValue_SetsStatusUnconditionally(TableStatus newStatus)
+    {
+        var table = ValidTable();
+
+        table.SetStatus(newStatus);
+
+        table.Status.Should().Be(newStatus, because: "FR-06's direct staff override has no transition guard between any two statuses.");
+    }
+
+    [Fact]
+    public void MarkOccupied_StatusAvailable_SetsOccupiedAndReturnsTrue()
+    {
+        var table = ValidTable();
+
+        var changed = table.MarkOccupied();
+
+        changed.Should().BeTrue();
+        table.Status.Should().Be(TableStatus.Occupied);
+    }
+
+    [Fact]
+    public void MarkOccupied_AlreadyOccupied_ReturnsFalseAndStaysOccupied()
+    {
+        var table = ValidTable();
+        table.SetStatus(TableStatus.Occupied);
+
+        var changed = table.MarkOccupied();
+
+        changed.Should().BeFalse(
+            because: "the caller (ReservationSeatedTableOccupiedHandler) uses this to skip a redundant persist/audit write on an event replay.");
+        table.Status.Should().Be(TableStatus.Occupied);
+    }
+
+    [Theory]
+    [InlineData(TableStatus.Reserved)]
+    [InlineData(TableStatus.Occupied)]
+    public void ReleaseIfReservationHeld_StatusReservedOrOccupied_SetsAvailableAndReturnsTrue(TableStatus status)
+    {
+        var table = ValidTable();
+        table.SetStatus(status);
+
+        var changed = table.ReleaseIfReservationHeld();
+
+        changed.Should().BeTrue();
+        table.Status.Should().Be(TableStatus.Available);
+    }
+
+    [Theory]
+    [InlineData(TableStatus.Available)]
+    [InlineData(TableStatus.NeedsCleaning)]
+    [InlineData(TableStatus.Blocked)]
+    public void ReleaseIfReservationHeld_StatusNotReservationDriven_ReturnsFalseAndLeavesStatusUntouched(TableStatus status)
+    {
+        var table = ValidTable();
+        table.SetStatus(status);
+
+        var changed = table.ReleaseIfReservationHeld();
+
+        changed.Should().BeFalse(
+            because: "an automatic BR-05 release must never silently clobber a staff-driven FR-06 override (NeedsCleaning/Blocked) or a table that's already Available.");
+        table.Status.Should().Be(status);
+    }
+
+    private static void SetStatus(Table table, TableStatus status) => table.SetStatus(status);
 }

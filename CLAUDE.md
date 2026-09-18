@@ -355,8 +355,10 @@ BR-01's own table-overlap enforcement (below) does **not** extend across a `Tabl
 members — booking table T1 as part of a T1+T2 combo doesn't mark T2 as unavailable for a
 separate, independent booking. The charter's fixed `Reservation.TableId` schema (one table per
 reservation) has no representation for "this reservation occupies a set of tables," so this is a
-known, deliberate gap, not a Phase 6 bug — revisit if/when Phase 7's table-status wiring makes it
-matter in practice.
+known, deliberate gap, not a Phase 6 bug. Phase 7's table-status wiring landed without touching
+this — seating T1 as part of a T1+T2 combo only calls `Table.MarkOccupied` on T1 itself (the
+`ReservationSeated` event carries a single `TableId`), so T2 still shows Available even while
+seated as part of the same combined party. Still not revisited; still a known gap.
 
 ### BR-01 — a database-enforced exclusion constraint, not just an application check
 
@@ -435,15 +437,149 @@ same as `UpdateTableCommand` — the caller always resends every editable field)
   section above already named this as Phase 6-or-later; this phase's charter refs (FR-01–03,
   US-01, US-02) don't include FR-08, so a reservation can still be created outside any defined
   service period. Revisit alongside a real Phase 7/8 need.
-- **`Seated`/`Completed`/`NoShow` stay unreachable.** `ReservationStatus` declares all five
-  values (same reasoning as `TableStatus` declaring `Reserved`/`Occupied` before Phase 7 drives
-  them), but no command transitions to anything but `Confirmed`/`Cancelled` yet — BR-04/BR-05
-  and the cross-module table-status event are Phase 7's concern.
+- **`Seated`/`NoShow` stay unreachable as of this phase.** `ReservationStatus` declares all five
+  values; only `Confirmed`/`Cancelled` were reachable here. Phase 7 makes `Seated`/`NoShow`
+  reachable too (FR-05/BR-04/BR-05) — see CLAUDE.md's "Seating & table status (Phase 7)" section.
+  `Completed` remains unreachable even after Phase 7; no phase drives it yet.
 - **The Blazor UI only gained the `CustomerPhone` field FR-01 requires.** Unlike Tables/
   Scheduling (which had no UI to begin with and deferred all of it), Reservations already had
   Phase 2's walking-skeleton `ReservationForm` wired into a real page and E2E-tested — breaking
   it wasn't an option once `CustomerPhone` became required. Search/edit/cancel/table-assignment
   screens stay API-only, deferred to Phase 10 same as everything else.
+
+## Seating & table status (Phase 7 — FR-05, FR-06, BR-04, BR-05, RISK-01)
+
+The first phase whose own charter refs *require* a cross-module write, not just a cross-module
+read (ADR-006's `ITableAvailabilityLookup` was Reservations reading Tables at request time;
+Phase 7 needs Reservations to *change* Tables' state as a side effect of its own command). This
+is also the first real use of the `IDomainEventPublisher`/`IDomainEventHandler<T>` pair ADR-005
+already named but nothing had wired up yet.
+
+### ADR-007 — Cross-module events live in Contracts, constructed by Application, not by Domain
+
+**Status:** ACCEPTED. **Context:** `AggregateRoot.DomainEvents`/`AddDomainEvent`/
+`ClearDomainEvents()` have existed since Phase 0/2 as scaffolding, with a doc comment describing
+the intended shape ("events accumulate until the composition root dispatches and clears them").
+The obvious reading — Domain raises the event, something reads the accumulator and dispatches —
+runs straight into the boundary table: the event type has to be visible to *both* the publishing
+module's Application (to construct/publish it) and the subscribing module's Application (to
+declare a handler for it), which means it must live in the publisher's `Contracts` project. But
+`{M}.Domain` may reference `Mise.SharedKernel` *only* — not even its own module's `Contracts` —
+so a Domain method can never construct a Contracts-typed event directly.
+
+**Decision:** the cross-module event type (`ReservationSeated`, `ReservationTableVacated`) is
+declared directly in `Mise.Modules.Reservations.Contracts`, and the Application-layer command
+handler (`SeatReservationCommandHandler`, `CancelReservationCommandHandler`,
+`MarkReservationNoShowCommandHandler`) constructs it directly after a successful persist —
+never via `AggregateRoot.DomainEvents`. That accumulator stays genuinely unused after this
+phase too: every Phase 7 handler already knows exactly which event resulted from the Domain
+call it just made (`MarkSeated`'s only side effect is a table assignment change), so routing
+through the accumulator would be pure ceremony with no payoff — same "introduce it for real once
+a future need actually needs it" reasoning CLAUDE.md already applies to the query-handler
+abstraction. Revisit only if a future Domain method's side effects become non-trivial for its
+caller to reconstruct without inspecting the accumulator.
+
+**`IDomainEventPublisher.PublishAsync<TEvent>(TEvent, ct)`** (`Mise.SharedKernel.Infrastructure`)
+is generic at the call site, not `PublishAsync(IEnumerable<IDomainEvent>)` — the caller always
+knows `TEvent` at compile time, so resolution is ordinary `IServiceProvider.GetServices<T>()`,
+never reflection over a runtime type. This is what "no reflection-based discovery" in ADR-005
+actually forbids: MediatR-style assembly scanning to *find* handler types. Explicit,
+one-line-per-event-type DI registration (`services.AddScoped<IDomainEventHandler<ReservationSeated>,
+ReservationSeatedTableOccupiedHandler>()`) still happens by hand, at `Mise.ApiService`'s
+composition root — deliberately not inside `AddTablesPersistence`, because "which other module's
+event this module reacts to" is a cross-module composition decision, not one module's own
+persistence wiring (see that extension method's own doc comment).
+
+**Dispatch timing (RISK-01 / docs/plan.md correction #10):** after the triggering `SaveChangesAsync`
+commits, awaited within the same request, before the response returns — proven by
+`PatchReservationSeat_MarksTableOccupied_InSameRequest`, a plain DB read immediately after the
+API response with no polling. A handler that throws propagates uncaught: a cross-module side
+effect failing must be as loud as any other failure in the same request (`DomainEventPublisher`'s
+own doc comment).
+
+**Replay semantics deliberately diverge from the audit write.** Every Phase-6-style handler
+skips its audit write when `WasAlreadyProcessed` is true (replaying an `OperationId` must not
+double-write history). The domain-event dispatch does **not** follow that gate — it publishes on
+every `Saved` outcome, replay included. Reasoning: unlike an audit entry (which would duplicate),
+the Tables-side handlers are themselves idempotent (`Table.MarkOccupied`/`ReleaseIfReservationHeld`
+report whether they actually changed anything and skip a redundant persist/audit write when they
+didn't), so redispatching on replay is exactly the self-healing behavior wanted if the first
+attempt's Reservation-side commit succeeded but the cross-module Table-side step failed before
+its own commit — a client retry (same `OperationId`) finds the Reservation gateway short-circuit
+to `WasAlreadyProcessed: true` without re-running the Domain mutation, but still redispatches the
+event, giving the failed Table-side step another chance.
+
+**`Reservation.MarkSeated` needed its own idempotency fix that Cancel/MarkNoShow didn't.**
+`Cancel`/`MarkNoShow` were already idempotent no-ops when re-invoked on an already-terminal
+status. The first cut of `MarkSeated` was not: it guarded "only from Confirmed," which is exactly
+what makes an `OperationId` replay of an *already-seated* reservation throw
+`DomainRuleViolationException` instead of succeeding a second time — caught by
+`PatchReservationSeat_SameOperationIdTwice_SeatsOnlyOnce` returning 409 on the second call during
+development, not by inspection. Fix: idempotent no-op when already Seated *at the same
+`tableId`*; still rejects a *different* `tableId` while already Seated, since that's a genuine
+conflict (reassigning an already-seated party), not a replay of the same request.
+
+### BR-05's "unless another active reservation holds it" — a reverse-direction cross-module read
+
+**`Mise.Modules.Reservations.Contracts.IReservationLookup`** is ADR-006's `ITableAvailabilityLookup`
+mirrored in the opposite direction: Tables' `ReservationTableVacatedHandler` needs to ask
+Reservations "does anything else currently hold this table," which only Reservations can answer.
+Implemented by `Mise.Modules.Reservations.Infrastructure`'s `ReservationLookup`, following the
+exact same "a module implementing its own module's Contracts interface" allowance
+`TableAvailabilityLookup` already established.
+
+**"Currently holds it" is time-scoped, not "ever holds it."** Given BR-01's exclusion constraint,
+two *active* reservations can never both cover the same instant on the same table — so the only
+way "another active reservation holds it" is reachable at all is a back-to-back pairing where the
+earlier reservation's window has already ended and a later, non-overlapping reservation's window
+has already begun. `HasCurrentActiveReservationForTableAsync` checks exactly that: a Confirmed or
+Seated reservation, other than the one just vacated, whose `[ReservationDateTime,
+ReservationDateTime + DurationMinutes)` window covers the caller's `asOfUtc` — proven by
+`PatchReservationNoShow_AnotherActiveReservationCurrentlyHoldsTheTable_TableStaysOccupied`, which
+constructs exactly that back-to-back pairing using real wall-clock offsets (no `FakeTimeProvider`
+in this tier — see CLAUDE.md's Conventions on integration tests using real `UtcNow` throughout).
+
+**`Table.ReleaseIfReservationHeld` only overwrites `Reserved`/`Occupied`**, never
+`NeedsCleaning`/`Blocked` — so an automatic BR-05 release can never silently clobber a staff-driven
+FR-06 override. **Known, deliberate gap:** `Table.Status` cannot distinguish "Occupied because
+this reservation was seated" from "Occupied because staff sat a walk-in via FR-06's `SetStatus`."
+If an *unrelated* reservation on the same table is later cancelled/no-showed while a walk-in
+currently occupies it, `ReleaseIfReservationHeld` has no way to know the Occupied status isn't
+reservation-driven and will release it back to Available — the charter's own BR-05 wording
+("another active *reservation*") doesn't cover a walk-in at all, and fixing this would need
+`Table` to track *why* it's Occupied (e.g. a nullable `OccupiedByReservationId`), which no
+current phase's data model asks for. Revisit if this causes a real incident in practice, not
+preemptively.
+
+### FR-06 — `PATCH /api/tables/{id}/status` is `FloorStaff`-or-`Manager`, not Manager-only
+
+Every other Tables mutation (Create/Update/Deactivate Section/Table, Create TableGroup) is
+Manager-only — configuration work. Changing a table's status during service is operational,
+day-of-service floor work, and the charter's own sample API contract names the same
+`FloorStaff`-or-`Manager` auth line this endpoint uses. `Table.SetStatus` itself has **no
+transition guard at all** — any status to any other status, including setting a status to the
+value it already has (a genuine SQL-level no-op: EF Core skips emitting an `UPDATE` for an
+unchanged property, so `xmin`/the ETag correctly does not advance for that case — see
+`PatchTableStatus_SameStatusAsCurrent_Returns200WithUnchangedETag`). The charter's own phrasing
+("change a table's status directly ... independent of a reservation") reads as "no gate," not a
+restricted transition table.
+
+### Scope boundaries — deliberate, not oversights
+
+- **No SignalR broadcast.** The charter's sample contracts mention `TableOccupied`/
+  `TableStatusChanged` going out over SignalR on seat/status-change — that's explicitly Phase 8
+  ("SignalR hub + live propagation"). The cross-module state change itself is real and
+  synchronous within the request; nothing broadcasts it to other connected clients yet.
+- **No `currentReservationId` on the floor-plan DTO.** FR-04 (the live floor plan) isn't in this
+  phase's charter refs (FR-05, FR-06, BR-04, BR-05 only) — `GET /api/tables/floor-plan`'s shape
+  is unchanged from Phase 4.
+- **`TableStatus.Reserved` is still never auto-set.** US-03's "a table with an upcoming
+  reservation within 30 minutes is flagged Reserved ahead of time" is a read-time/live-floor-plan
+  concern (FR-04), not this phase's. `Reserved` is directly reachable via FR-06's `SetStatus` only.
+- **No `Seated`→`Completed` transition.** Charter refs for this phase don't ask for it; `Completed`
+  stays declared-but-unreachable, same as before.
+- **No Blazor UI for seating or table-status.** Same deferral every phase since 4 has made —
+  API-only, proven at Architecture/Unit/Integration tiers, screens land with Phase 10.
 
 ## No mediator library (ADR-005)
 

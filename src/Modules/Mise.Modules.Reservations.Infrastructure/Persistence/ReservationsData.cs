@@ -68,6 +68,10 @@ internal sealed partial class ReservationsData(
         Reservation reservation, uint expectedVersion, Guid operationId, CancellationToken cancellationToken) =>
         SaveWithConcurrencyCheckAsync(reservation, expectedVersion, operationId, checkOverlap: false, cancellationToken);
 
+    public Task<ReservationSaveResult> MarkNoShowAsync(
+        Reservation reservation, uint expectedVersion, Guid operationId, CancellationToken cancellationToken) =>
+        SaveWithConcurrencyCheckAsync(reservation, expectedVersion, operationId, checkOverlap: false, cancellationToken);
+
     public async Task<IReadOnlyList<ReservationWithVersion>> SearchReservationsAsync(
         string? query, DateOnly? date, CancellationToken cancellationToken)
     {

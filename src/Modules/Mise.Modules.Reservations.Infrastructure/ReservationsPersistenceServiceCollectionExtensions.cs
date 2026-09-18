@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Mise.Modules.Reservations.Application.Ports;
+using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Reservations.Infrastructure.Persistence;
 using Mise.SharedKernel.Infrastructure;
 using Mise.SharedKernel.Persistence;
@@ -21,6 +22,7 @@ public static class ReservationsPersistenceServiceCollectionExtensions
                 npgsql.MigrationsHistoryTable("__ef_migrations_history", "reservations")));
 
         services.AddScoped<IReservationsData, ReservationsData>();
+        services.AddScoped<IReservationLookup, ReservationLookup>();
         services.AddScoped<IAuditWriter, AuditWriter<ReservationsDbContext>>();
 
         return services;

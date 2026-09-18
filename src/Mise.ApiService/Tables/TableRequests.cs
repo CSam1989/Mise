@@ -21,3 +21,5 @@ internal sealed record UpdateTableRequest(
     double? PositionY);
 
 internal sealed record DeactivateTableRequest(Guid OperationId);
+
+internal sealed record ChangeTableStatusRequest(Guid OperationId, string Status);

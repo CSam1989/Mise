@@ -69,6 +69,9 @@ internal sealed partial class TablesData(TablesDbContext dbContext, TimeProvider
     public Task<TableSaveResult> DeactivateTableAsync(Table table, uint expectedVersion, Guid operationId, CancellationToken cancellationToken) =>
         SaveWithConcurrencyCheckAsync(table, expectedVersion, operationId, cancellationToken);
 
+    public Task<TableSaveResult> ChangeTableStatusAsync(Table table, uint expectedVersion, Guid operationId, CancellationToken cancellationToken) =>
+        SaveWithConcurrencyCheckAsync(table, expectedVersion, operationId, cancellationToken);
+
     public Task<bool> AnyActiveTablesInSectionAsync(Guid sectionId, CancellationToken cancellationToken) =>
         dbContext.Tables.AsNoTracking().AnyAsync(t => t.SectionId == sectionId && t.IsActive, cancellationToken);
 

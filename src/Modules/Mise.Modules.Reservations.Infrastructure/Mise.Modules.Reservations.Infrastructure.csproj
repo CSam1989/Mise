@@ -23,10 +23,15 @@
   </ItemGroup>
 
   <!-- Own Domain + Application, Mise.SharedKernel(.Infrastructure) — no other module's
-       anything (CLAUDE.md's boundary table). -->
+       anything (CLAUDE.md's boundary table). The Contracts reference is new in Phase 7, same
+       reasoning as Tables.Infrastructure's own Phase-6 Contracts reference: this project
+       implements its own module's IReservationLookup contract (ADR-007) — allowed, since
+       ModuleBoundaryTests.Infrastructure_IsReferencedByNothingExceptTheCompositionRoot only
+       forbids the reverse direction. -->
   <ItemGroup>
     <ProjectReference Include="..\Mise.Modules.Reservations.Domain\Mise.Modules.Reservations.Domain.csproj" />
     <ProjectReference Include="..\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
+    <ProjectReference Include="..\Mise.Modules.Reservations.Contracts\Mise.Modules.Reservations.Contracts.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel\Mise.SharedKernel.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel.Infrastructure\Mise.SharedKernel.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Mise.SharedKernel.Persistence\Mise.SharedKernel.Persistence.csproj" />

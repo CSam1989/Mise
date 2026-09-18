@@ -5,25 +5,24 @@ using Mise.Modules.Reservations.Domain;
 using Mise.SharedKernel;
 using Mise.SharedKernel.Infrastructure;
 
-namespace Mise.Modules.Reservations.Application.CancelReservation;
+namespace Mise.Modules.Reservations.Application.MarkReservationNoShow;
 
 /// <summary>
-/// No FluentValidation validator — same reasoning as DeactivateTableCommandHandler's doc
-/// comment: there are no user-typed business fields to validate, only ids/version already
-/// shaped by the endpoint. <see cref="Reservation.Cancel"/> is idempotent by itself (a no-op if
-/// already Cancelled), so this never throws a Domain-level rejection the way UpdateDetails can.
-/// BR-05 ("cancelling ... frees its table") is added in Phase 7 — publishes
-/// <see cref="ReservationTableVacated"/> when the cancelled reservation had a table assigned, on
-/// every Saved outcome including a replay (see that event's doc comment for why).
+/// No FluentValidation validator — same reasoning as CancelReservationCommandHandler's doc
+/// comment: no user-typed business fields, only ids/version already shaped by the endpoint.
+/// BR-05's other terminal, table-releasing transition (Cancel is the first) — publishes the same
+/// <see cref="ReservationTableVacated"/> event Cancel does, only when the reservation actually
+/// had a table assigned, on every Saved outcome including a replay (see that event's doc comment
+/// for why).
 /// </summary>
-public sealed partial class CancelReservationCommandHandler(
+public sealed partial class MarkReservationNoShowCommandHandler(
     IReservationsData reservationsData,
     IAuditWriter auditWriter,
     IDomainEventPublisher domainEventPublisher,
     TimeProvider timeProvider,
-    ILogger<CancelReservationCommandHandler> logger)
+    ILogger<MarkReservationNoShowCommandHandler> logger)
 {
-    public async Task<ReservationSaveResult?> HandleAsync(CancelReservationCommand command, CancellationToken cancellationToken)
+    public async Task<ReservationSaveResult?> HandleAsync(MarkReservationNoShowCommand command, CancellationToken cancellationToken)
     {
         var current = await reservationsData.GetReservationByIdAsync(command.ReservationId, cancellationToken);
         if (current is null)
@@ -32,9 +31,9 @@ public sealed partial class CancelReservationCommandHandler(
         }
 
         var tableId = current.Reservation.TableId;
-        current.Reservation.Cancel(timeProvider.GetUtcNow());
+        current.Reservation.MarkNoShow(timeProvider.GetUtcNow());
 
-        var result = await reservationsData.CancelReservationAsync(
+        var result = await reservationsData.MarkNoShowAsync(
             current.Reservation, command.ExpectedVersion, command.OperationId, cancellationToken);
 
         if (result.Outcome == ReservationSaveOutcome.VersionMismatch)
@@ -56,13 +55,13 @@ public sealed partial class CancelReservationCommandHandler(
                     Id = Guid.NewGuid(),
                     EntityType = "Reservation",
                     EntityId = command.ReservationId,
-                    Action = "Cancelled",
+                    Action = "NoShow",
                     PerformedByStaffId = command.PerformedByStaffId,
                     OccurredAtUtc = timeProvider.GetUtcNow(),
                     Details = string.Empty,
                 },
                 cancellationToken);
-            LogReservationCancelled(command.ReservationId);
+            LogReservationNoShow(command.ReservationId);
         }
 
         if (tableId is { } id)
@@ -81,14 +80,14 @@ public sealed partial class CancelReservationCommandHandler(
         ["status"] = reservation.Status.ToString(),
     };
 
-    [LoggerMessage(EventId = 8, Level = LogLevel.Information, Message = "Reservation {ReservationId} cancelled.")]
-    private partial void LogReservationCancelled(Guid reservationId);
+    [LoggerMessage(EventId = 18, Level = LogLevel.Information, Message = "Reservation {ReservationId} marked no-show.")]
+    private partial void LogReservationNoShow(Guid reservationId);
 
-    [LoggerMessage(EventId = 9, Level = LogLevel.Warning,
-        Message = "OperationId {OperationId} was already processed for reservation {ReservationId}; skipping the cancellation.")]
+    [LoggerMessage(EventId = 19, Level = LogLevel.Warning,
+        Message = "OperationId {OperationId} was already processed for reservation {ReservationId}; skipping the no-show audit write.")]
     private partial void LogOperationReplayed(Guid operationId, Guid reservationId);
 
-    [LoggerMessage(EventId = 10, Level = LogLevel.Warning,
-        Message = "Reservation {ReservationId} cancel rejected: caller's version {ExpectedVersion} does not match current version {CurrentVersion}.")]
+    [LoggerMessage(EventId = 20, Level = LogLevel.Warning,
+        Message = "Reservation {ReservationId} no-show rejected: caller's version {ExpectedVersion} does not match current version {CurrentVersion}.")]
     private partial void LogVersionMismatch(Guid reservationId, uint expectedVersion, uint currentVersion);
 }
