@@ -104,12 +104,18 @@ jobs:
       - name: Restore the executable bit on test apphosts
         run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
       # WebTests.cs boots the real AppHost via DistributedApplicationTestingBuilder, which
-      # needs Aspire's DCP orchestrator binary. DCP isn't in the downloaded build-output
-      # artifact (bin/obj only) — it's provisioned as a side effect of restore, into
-      # ~/.aspire on *this* runner's own disk, which is a fresh VM the `build` job's restore
-      # never touched. Restoring again here is otherwise redundant (packages already built)
-      # but is what actually provisions DCP where this job can find it.
-      - run: dotnet restore Mise.slnx
+      # needs Aspire's DCP/dashboard bundle at ~/.aspire — a machine-local cache, not part of
+      # the downloaded build-output artifact (bin/obj only), and this job runs on a fresh VM
+      # the `build` job's own provisioning never touched. `dotnet restore` alone does NOT
+      # provision it: Mise.AppHost sets AspireUseCliBundle=true, and the bundle-provisioning
+      # MSBuild target (ResolveAspireCliBundlePaths, in the Aspire.Hosting.AppHost package)
+      # is wired to run BeforeTargets="GetAssemblyAttributes" — part of an actual *build*'s
+      # CoreCompile pipeline, never restore. That target self-provisions the bundle (running
+      # `aspire setup` via a `dnx aspire.cli` fallback when no `aspire` CLI is on PATH) the
+      # first time it runs, so building the AppHost here is what actually creates
+      # ~/.aspire/bundle where WebTests can find it — confirmed by reading
+      # Aspire.Hosting.AppHost's own .targets file, not just by inspection of the error.
+      - run: dotnet build src/Mise.AppHost/Mise.AppHost.csproj -c Release
       # No services: block — Testcontainers starts and owns its own PostgreSQL container;
       # ubuntu-latest already has Docker running.
       - run: >
@@ -129,6 +135,13 @@ jobs:
           name: build-output
       - name: Restore the executable bit on test apphosts
         run: chmod +x tests/*/bin/Release/net10.0/Mise.*Tests
+      # actions/upload-artifact strips Unix execute bits on every file, not just the test
+      # apphosts above — Microsoft.Playwright's own bundled Node runtime
+      # (.playwright/node/linux-x64/node, copied into the build output by the Playwright
+      # package's own build targets) comes back non-executable too, so playwright.ps1 fails
+      # with "Permission denied" trying to spawn it before installing a single browser.
+      - name: Restore the executable bit on the bundled Playwright Node runtime
+        run: find tests/Mise.E2ETests/bin/Release/net10.0/.playwright -type f -name node -exec chmod +x {} +
       - name: Install Playwright browsers
         shell: pwsh
         run: ./tests/Mise.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
