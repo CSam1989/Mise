@@ -9,7 +9,12 @@ namespace Mise.IntegrationTests;
 [Trait("Category", "Integration")]
 public class WebTests
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+    // 30s was the dotnet-new-aspire-starter template's original default — too tight for a
+    // cold CI runner's StartAsync, which pulls the Postgres container image, starts three
+    // .NET processes (ApiService/MigrationService/Web), and runs EF migrations, all before
+    // the first health check can pass. Bumped once this became provably reachable in CI (the
+    // DCP-bundle fix that made StartAsync run at all also revealed this was too short).
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
 
     [Fact]
     public async Task GetWebResourceRootReturnsOkStatusCode()
