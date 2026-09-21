@@ -9,15 +9,16 @@ namespace Mise.IntegrationTests;
 [Trait("Category", "Integration")]
 public class WebTests
 {
-    // 30s was the dotnet-new-aspire-starter template's original default — too tight for a
-    // cold CI runner's StartAsync, which pulls the Postgres container image, starts three
-    // .NET processes (ApiService/MigrationService/Web), and runs EF migrations, all before
-    // the first health check can pass. 120s wasn't enough either (still a plain
-    // TimeoutException, never a connection/container error — the clearest possible signal
-    // that this only ever needed more wall-clock time, not a config fix). Bumped again,
-    // generously: this is a one-off smoke test ("does the real app graph start?"), not
-    // something performance-sensitive, so erring high costs nothing but idle CI minutes.
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(240);
+    // The actual root cause of every prior "TimeoutException" in CI, found only once
+    // XunitTestOutputLoggerProvider surfaced the AppHost's own logs: apiservice's health
+    // check targets its HTTPS endpoint (Aspire's WithHttpHealthCheck defaults to it), using
+    // the ASP.NET Core developer certificate — trusted on a real dev machine via `dotnet
+    // dev-certs https --trust` (README's local setup), but never trusted on an ephemeral CI
+    // runner. The health check failed with AuthenticationException: UntrustedRoot on every
+    // single attempt, forever — no amount of extra timeout could ever have fixed it, only
+    // hidden how deterministic the failure actually was. No timeout bump was the real fix;
+    // this is.
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
 
     [Fact]
     public async Task GetWebResourceRootReturnsOkStatusCode()
@@ -50,6 +51,18 @@ public class WebTests
         appHost.Services.ConfigureHttpClientDefaults(clientBuilder =>
         {
             clientBuilder.AddStandardResilienceHandler();
+            // Every HttpClient built through this factory — including the one Aspire's own
+            // WithHttpHealthCheck uses internally (confirmed from the failing test's captured
+            // log: its call stack runs through this exact ResilienceHandler pipeline) — must
+            // tolerate the untrusted-in-CI dev certificate described above. Loopback traffic
+            // between processes the CI runner itself just started; there is no real party to
+            // impersonate and nothing this validation would actually protect against here.
+            // Scoped to this test's own throwaway AppHost instance only — never a pattern for
+            // Mise.ApiService/Mise.Web's real Program.cs.
+            clientBuilder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
+            });
         });
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
