@@ -18,6 +18,7 @@ public class SeatReservationCommandHandlerTests
     private readonly Mock<ITableAvailabilityLookup> _tableAvailabilityLookup = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
     private readonly Mock<IDomainEventPublisher> _domainEventPublisher = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly SeatReservationCommandHandler _sut;
 
@@ -25,7 +26,8 @@ public class SeatReservationCommandHandlerTests
     {
         _sut = new SeatReservationCommandHandler(
             _reservationsData.Object, _tableAvailabilityLookup.Object, _auditWriter.Object, _domainEventPublisher.Object,
-            new SeatReservationCommandValidator(), _timeProvider, NullLogger<SeatReservationCommandHandler>.Instance);
+            _realtimeNotifier.Object, new SeatReservationCommandValidator(), _timeProvider,
+            NullLogger<SeatReservationCommandHandler>.Instance);
     }
 
     private Reservation ExistingReservation() =>
@@ -67,6 +69,8 @@ public class SeatReservationCommandHandlerTests
         result.Should().BeNull();
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
         _domainEventPublisher.Verify(p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -133,6 +137,12 @@ public class SeatReservationCommandHandlerTests
                 It.Is<ReservationSeated>(e => e.ReservationId == reservation.Id && e.TableId == tableId),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(
+                It.Is<ReservationChangedNotification>(p => p.ReservationId == reservation.Id && p.TableId == tableId),
+                It.IsAny<CancellationToken>()),
+            Times.Once,
+            "ADR-008 collapses Seat into a ReservationUpdated notification rather than a distinct wire event.");
     }
 
     [Fact]
@@ -154,6 +164,8 @@ public class SeatReservationCommandHandlerTests
         exception.Which.CurrentVersion.Should().Be(5u);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
         _domainEventPublisher.Verify(p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -174,6 +186,8 @@ public class SeatReservationCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ReservationOverlapException>();
         exception.Which.TableId.Should().Be(tableId);
         _domainEventPublisher.Verify(p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -195,5 +209,9 @@ public class SeatReservationCommandHandlerTests
         _domainEventPublisher.Verify(
             p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Once,
             "unlike the audit write, the event is redispatched on replay so a failed cross-module side effect from the first attempt can self-heal.");
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "unlike the ADR-007 cross-module dispatch, the realtime notification is gated by WasAlreadyProcessed same as the audit write.");
     }
 }

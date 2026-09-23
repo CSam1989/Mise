@@ -23,7 +23,11 @@ namespace Mise.Modules.Tables.Application;
 /// </para>
 /// </summary>
 public sealed partial class ReservationSeatedTableOccupiedHandler(
-    ITablesData tablesData, IAuditWriter auditWriter, TimeProvider timeProvider, ILogger<ReservationSeatedTableOccupiedHandler> logger)
+    ITablesData tablesData,
+    IAuditWriter auditWriter,
+    IRealtimeNotifier realtimeNotifier,
+    TimeProvider timeProvider,
+    ILogger<ReservationSeatedTableOccupiedHandler> logger)
     : IDomainEventHandler<ReservationSeated>
 {
     public async Task HandleAsync(ReservationSeated domainEvent, CancellationToken cancellationToken)
@@ -74,6 +78,9 @@ public sealed partial class ReservationSeatedTableOccupiedHandler(
             },
             cancellationToken);
         LogTableOccupied(domainEvent.TableId, domainEvent.ReservationId);
+
+        await realtimeNotifier.NotifyTableStatusChangedAsync(
+            new TableStatusChangedNotification(domainEvent.TableId, current.Table.Status.ToString()), cancellationToken);
     }
 
     [LoggerMessage(EventId = 76, Level = LogLevel.Information, Message = "Table {TableId} marked Occupied by reservation {ReservationId}.")]

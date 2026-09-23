@@ -581,6 +581,128 @@ restricted transition table.
 - **No Blazor UI for seating or table-status.** Same deferral every phase since 4 has made —
   API-only, proven at Architecture/Unit/Integration tiers, screens land with Phase 10.
 
+## Real-time propagation (Phase 8 — FR-10, NFR-04, US-03)
+
+`Mise.ApiService` gains a SignalR hub (`Mise.ApiService.Realtime.FloorPlanHub`, `/hubs/floorplan`)
+broadcasting table/reservation status changes to every connected staff device. This phase is
+**API/hub-only, matching every prior phase's own UI deferral** — no Blazor screen renders a live
+floor plan yet (that's Phase 10); what lands now is the frozen wire contract, the broadcast
+wiring on every mutation that needs it, and the hub itself, proven at the
+Architecture/Unit/Integration tiers.
+
+### ADR-008 — A direct `IRealtimeNotifier` port, not a domain-event relay; four frozen, collapsed event names
+
+**Status:** ACCEPTED. **Context:** the charter's own sample API contract is internally
+inconsistent about what the hub actually sends — its declared event list (§10) names
+`TableStatusChanged`, `ReservationCreated`, `ReservationUpdated`, `ReservationCancelled`, but the
+`/seat` sample response separately claims it "publishes `TableOccupied`," a fifth, undeclared
+event, and neither list says what Seat/NoShow themselves broadcast as. Left unresolved, this is
+exactly the kind of ambiguity the "must land early" table already flagged Phase 8's own event
+names as needing to freeze before MAUI's later sync work can depend on them.
+
+**Decision, part 1 — collapse to the charter's own declared four, nothing finer-grained.**
+`TableStatusChanged` fires for *any* `Table.Status` change regardless of trigger — FR-06's direct
+staff override (`ChangeTableStatusCommandHandler`) and both Phase-7 cross-module handlers
+(`ReservationSeatedTableOccupiedHandler`, `ReservationTableVacatedHandler`) all broadcast the
+same event name; a client that wants to know *why* re-fetches the floor plan, the same "the
+event only says what changed" reasoning `TableStatusChangedNotification`'s own doc comment
+gives. `Seat`/`MarkNoShow` broadcast as `ReservationUpdated` — a status transition is just
+another field change, not a new event type per transition. This is fewer wire events than a
+"one per transition" design would produce, and it is the one the charter's own hub declaration
+already committed to; growing a bespoke event per business transition is exactly the kind of
+scope creep this phase doesn't need to pay for.
+
+**Decision, part 2 — `IRealtimeNotifier` (`Mise.SharedKernel.Infrastructure`) is called directly
+by every command handler that needs it, exactly like `IAuditWriter`, *not* routed through
+`IDomainEventPublisher`/`IDomainEventHandler<T>` (ADR-005/007).** The domain-event mechanism
+exists for one module reacting to another's business event — Tables reacting to Reservations'
+`ReservationSeated` is a real subscribing module with real business logic
+(`Table.MarkOccupied`). "Relay this change over SignalR" has no natural owning module to react
+from; it is a cross-cutting infrastructure concern, the same category `IAuditWriter` already
+occupies, so it gets the same shape: a constructor dependency, called once per real effect,
+never a second indirection layer stacked on top of `IHubContext<T>` (docs/plan.md's own
+explicit "pick one" guidance). Six handlers gained this dependency this phase:
+`CreateReservationCommandHandler`, `UpdateReservationCommandHandler`,
+`CancelReservationCommandHandler`, `SeatReservationCommandHandler`,
+`MarkReservationNoShowCommandHandler` (Reservations), and `ChangeTableStatusCommandHandler`
+(Tables) — plus the two existing Phase-7 cross-module handlers, which now also call it after
+their own successful status change.
+
+**Gated by `WasAlreadyProcessed`, deliberately the *opposite* of ADR-007's cross-module dispatch
+choice.** `SeatReservationCommandHandler`/`CancelReservationCommandHandler`/
+`MarkReservationNoShowCommandHandler` already redispatch their cross-module domain event
+*unconditionally*, replay included, because that dispatch exists to retry a possibly-failed
+Table-side effect. A realtime broadcast has no such retry purpose: nothing changed on a replay,
+so there is nothing new for a connected client to learn, and re-broadcasting identical state
+would be pure noise. The realtime notify call therefore sits inside the same `if
+(!result.WasAlreadyProcessed)` block as the audit write, not alongside the ungated domain-event
+publish below it — read `SeatReservationCommandHandler.cs` side by side with its own
+`ReservationSeated` dispatch to see the two different gates in the same method.
+
+**A broadcast failure is logged and swallowed, never rethrown.** `SignalRRealtimeNotifier` (the
+one `IRealtimeNotifier` implementation, in `Mise.ApiService.Realtime`) wraps every
+`IHubContext<FloorPlanHub>.Clients.All.SendAsync` call in its own try/catch, logging at `Error`
+and returning a completed task on failure. This is a deliberate divergence from `IAuditWriter`
+(whose failures must propagate — FR-09/NFR-02 auditability is a correctness property) and from
+the ADR-007 cross-module dispatch (whose failure means the *system's own state* is now
+inconsistent, e.g. a seated reservation with a table stuck Available). A missed SignalR push
+means only that some already-connected client didn't get told sooner — the mutation itself
+already committed successfully, and the client's next floor-plan/reservation-list fetch sees
+correct state regardless. Turning that into a 500 would falsely tell the caller their write
+failed when it didn't.
+
+**No architecture-test rule forces a handler to take `IRealtimeNotifier`**, unlike
+`IAuditWriter`'s `EveryCommandHandler_DependsOnSomethingImplementingIAuditWriter` — a missed
+broadcast is a live-UI staleness gap, not a silent audit/compliance hole, so it doesn't get the
+same compile-time guarantee. Getting this wrong on a future mutating handler is caught by code
+review and the per-feature test contract's mutating-endpoint row, same as any other feature
+that isn't itself architecture-test-enforced.
+
+### The JWT-bearer scheme has to accept the token from a query string, on this one route only
+
+SignalR's browser/MAUI clients can't attach an `Authorization` header to the transports
+`FloorPlanHub` actually negotiates (WebSockets, long-polling) — this is the standard ASP.NET
+Core SignalR-plus-JWT gotcha, not something specific to this codebase. `Program.cs`'s
+`AddJwtBearer` options gain an `OnMessageReceived` handler that reads an `access_token` query
+parameter and only honors it when the request path starts with `FloorPlanHub.RoutePattern`
+(`/hubs/floorplan`) — every other endpoint is completely unaffected and still requires a real
+`Authorization` header. `FloorPlanHub` itself carries `[Authorize(Policy = "FloorStaff")]` at
+the class level (the same policy `GET /api/tables/floor-plan` already uses) — an unauthenticated
+or wrong-role connection attempt is rejected during SignalR's negotiate handshake, surfacing to
+the client as an `HttpRequestException`, proven by `FloorPlanHubTests.Connect_Unauthenticated_Rejected`.
+
+### Testing — arrival, never timing
+
+Per docs/plan.md's "Testing the hard subsystems" guidance for real-time: every
+`FloorPlanHubTests` case (`tests/Mise.IntegrationTests/FloorPlanHubTests.cs`) opens a real
+`HubConnection` pinned to `HttpTransportType.LongPolling` against `WebApplicationFactory`'s
+`TestServer` (WebSockets don't survive it), asserts an event *arrived* via a
+`TaskCompletionSource` set from the hub's own `.On<T>(...)` callback, and bounds the wait with
+`Task.WaitAsync(TimeSpan)` — a signal-driven wait, not the `Thread.Sleep`/`Task.Delay` this
+project bans outright in test code. **The "exactly once, even on replay" guarantee is
+deliberately proven at the unit tier instead** (`Times.Never` on `IRealtimeNotifier` for every
+handler's `WasAlreadyProcessed` branch) — a client's delivery round-trip over long-polling has
+no reliable "nothing else is coming" signal that isn't really a disguised sleep in a bounded-wait
+disguise, so the integration tier sticks to positive-arrival proofs only. The actual ~1–2s
+NFR-04 latency budget is out of scope for the gated suite entirely (a nightly perf test's job,
+per docs/plan.md) — nothing here asserts a delivery deadline.
+
+### Scope boundaries — deliberate, not oversights
+
+- **`Mise.UI.Abstractions.IFloorPlanStream` (the frozen client-side contract) lands now; its
+  concrete implementation does not.** The interface + payload records exist so MAUI's later
+  sync/live-floor-plan work has a stable shape to build against — the same reasoning
+  `OperationId` idempotency landed in Phase 2 before the offline Outbox needed it. A concrete
+  `SignalRFloorPlanStream` with no consuming screen would be exactly the unused, premature
+  production code this project's own conventions avoid; it lands in Phase 10 alongside the
+  floor-plan board that actually drives it, the same deferral every phase since 4 has already
+  made for Blazor UI generally.
+- **No Blazor UI change of any kind this phase** — no new page, no new component, `Mise.Web` is
+  untouched. Proven at Architecture/Unit/Integration tiers only.
+- **No nightly NFR-04 latency test yet** — docs/plan.md names this as a separate, later
+  performance-test concern (p95 over N events plus a production OpenTelemetry histogram), not
+  part of this phase's per-push gate.
+
 ## No mediator library (ADR-005)
 
 Cross-module domain events go through a ~40-line hand-rolled `IDomainEventPublisher` /

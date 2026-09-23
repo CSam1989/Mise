@@ -19,6 +19,7 @@ public sealed partial class MarkReservationNoShowCommandHandler(
     IReservationsData reservationsData,
     IAuditWriter auditWriter,
     IDomainEventPublisher domainEventPublisher,
+    IRealtimeNotifier realtimeNotifier,
     TimeProvider timeProvider,
     ILogger<MarkReservationNoShowCommandHandler> logger)
 {
@@ -62,6 +63,13 @@ public sealed partial class MarkReservationNoShowCommandHandler(
                 },
                 cancellationToken);
             LogReservationNoShow(command.ReservationId);
+
+            // ADR-008: NoShow, like Seat, notifies as ReservationUpdated (a status transition).
+            await realtimeNotifier.NotifyReservationUpdatedAsync(
+                new ReservationChangedNotification(
+                    result.Reservation.Id, result.Reservation.CustomerName, result.Reservation.PartySize,
+                    result.Reservation.ReservationDateTime, result.Reservation.Status.ToString(), result.Reservation.TableId),
+                cancellationToken);
         }
 
         if (tableId is { } id)

@@ -19,6 +19,7 @@ public sealed partial class UpdateReservationCommandHandler(
     IReservationsData reservationsData,
     ITableAvailabilityLookup tableAvailabilityLookup,
     IAuditWriter auditWriter,
+    IRealtimeNotifier realtimeNotifier,
     IValidator<UpdateReservationCommand> validator,
     TimeProvider timeProvider,
     ILogger<UpdateReservationCommandHandler> logger)
@@ -76,6 +77,12 @@ public sealed partial class UpdateReservationCommandHandler(
                 },
                 cancellationToken);
             LogReservationUpdated(command.ReservationId);
+
+            await realtimeNotifier.NotifyReservationUpdatedAsync(
+                new ReservationChangedNotification(
+                    result.Reservation.Id, result.Reservation.CustomerName, result.Reservation.PartySize,
+                    result.Reservation.ReservationDateTime, result.Reservation.Status.ToString(), result.Reservation.TableId),
+                cancellationToken);
         }
 
         return result;

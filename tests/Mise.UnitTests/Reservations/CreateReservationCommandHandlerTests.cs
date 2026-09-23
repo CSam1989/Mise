@@ -18,6 +18,7 @@ public class CreateReservationCommandHandlerTests
     private readonly Mock<IReservationsData> _reservationsData = new();
     private readonly Mock<ITableAvailabilityLookup> _tableAvailabilityLookup = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly CreateReservationCommandHandler _sut;
 
@@ -27,6 +28,7 @@ public class CreateReservationCommandHandlerTests
             _reservationsData.Object,
             _tableAvailabilityLookup.Object,
             _auditWriter.Object,
+            _realtimeNotifier.Object,
             new CreateReservationCommandValidator(),
             Options.Create(new ReservationDefaultsOptions()),
             _timeProvider,
@@ -87,6 +89,10 @@ public class CreateReservationCommandHandlerTests
                 It.IsAny<CancellationToken>()),
             Times.Once,
             "the audit entry's timestamp must come from the injected TimeProvider, never the wall clock.");
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationCreatedAsync(
+                It.Is<ReservationChangedNotification>(p => p.ReservationId == result.Reservation.Id), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -124,6 +130,10 @@ public class CreateReservationCommandHandlerTests
             a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "replaying an already-processed operation must not write a second audit entry for the same effect.");
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationCreatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "nothing changed on a replay, so there is nothing new to broadcast (unlike the ADR-007 cross-module dispatch).");
     }
 
     [Fact]
@@ -216,5 +226,7 @@ public class CreateReservationCommandHandlerTests
             because: "docs/plan.md correction #1 — BR-01 surfaces as a clean 409 via this exception, never a raw constraint error.");
         exception.Which.TableId.Should().Be(tableId);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationCreatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

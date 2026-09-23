@@ -15,13 +15,14 @@ public class CancelReservationCommandHandlerTests
     private readonly Mock<IReservationsData> _reservationsData = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
     private readonly Mock<IDomainEventPublisher> _domainEventPublisher = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly CancelReservationCommandHandler _sut;
 
     public CancelReservationCommandHandlerTests()
     {
         _sut = new CancelReservationCommandHandler(
-            _reservationsData.Object, _auditWriter.Object, _domainEventPublisher.Object, _timeProvider,
+            _reservationsData.Object, _auditWriter.Object, _domainEventPublisher.Object, _realtimeNotifier.Object, _timeProvider,
             NullLogger<CancelReservationCommandHandler>.Instance);
     }
 
@@ -66,6 +67,10 @@ public class CancelReservationCommandHandlerTests
         _auditWriter.Verify(
             a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Cancelled"), It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationCancelledAsync(
+                It.Is<ReservationChangedNotification>(p => p.ReservationId == reservation.Id), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -84,6 +89,8 @@ public class CancelReservationCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationCancelledAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -100,6 +107,10 @@ public class CancelReservationCommandHandlerTests
         await _sut.HandleAsync(command, CancellationToken.None);
 
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationCancelledAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "nothing changed on a replay, so there is nothing new to broadcast (unlike the ADR-007 cross-module dispatch below).");
     }
 
     [Fact]

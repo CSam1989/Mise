@@ -16,13 +16,14 @@ public class UpdateReservationCommandHandlerTests
     private readonly Mock<IReservationsData> _reservationsData = new();
     private readonly Mock<ITableAvailabilityLookup> _tableAvailabilityLookup = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly UpdateReservationCommandHandler _sut;
 
     public UpdateReservationCommandHandlerTests()
     {
         _sut = new UpdateReservationCommandHandler(
-            _reservationsData.Object, _tableAvailabilityLookup.Object, _auditWriter.Object,
+            _reservationsData.Object, _tableAvailabilityLookup.Object, _auditWriter.Object, _realtimeNotifier.Object,
             new UpdateReservationCommandValidator(), _timeProvider, NullLogger<UpdateReservationCommandHandler>.Instance);
     }
 
@@ -97,6 +98,10 @@ public class UpdateReservationCommandHandlerTests
         _auditWriter.Verify(
             a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Updated"), It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(
+                It.Is<ReservationChangedNotification>(p => p.ReservationId == reservation.Id), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -135,6 +140,8 @@ public class UpdateReservationCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -155,6 +162,8 @@ public class UpdateReservationCommandHandlerTests
 
         var exception = await act.Should().ThrowAsync<ReservationOverlapException>();
         exception.Which.TableId.Should().Be(tableId);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -171,5 +180,7 @@ public class UpdateReservationCommandHandlerTests
         await _sut.HandleAsync(command, CancellationToken.None);
 
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

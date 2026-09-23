@@ -19,6 +19,7 @@ namespace Mise.Modules.Tables.Application.ChangeTableStatus;
 public sealed partial class ChangeTableStatusCommandHandler(
     ITablesData tablesData,
     IAuditWriter auditWriter,
+    IRealtimeNotifier realtimeNotifier,
     IValidator<ChangeTableStatusCommand> validator,
     TimeProvider timeProvider,
     ILogger<ChangeTableStatusCommandHandler> logger)
@@ -65,6 +66,9 @@ public sealed partial class ChangeTableStatusCommandHandler(
                 },
                 cancellationToken);
             LogTableStatusChanged(command.TableId, newStatus);
+
+            await realtimeNotifier.NotifyTableStatusChangedAsync(
+                new TableStatusChangedNotification(command.TableId, newStatus.ToString()), cancellationToken);
         }
 
         return result;

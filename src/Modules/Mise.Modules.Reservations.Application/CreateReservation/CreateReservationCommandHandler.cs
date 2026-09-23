@@ -19,6 +19,7 @@ public sealed partial class CreateReservationCommandHandler(
     IReservationsData reservationsData,
     ITableAvailabilityLookup tableAvailabilityLookup,
     IAuditWriter auditWriter,
+    IRealtimeNotifier realtimeNotifier,
     IValidator<CreateReservationCommand> validator,
     IOptions<ReservationDefaultsOptions> options,
     TimeProvider timeProvider,
@@ -67,6 +68,12 @@ public sealed partial class CreateReservationCommandHandler(
                 },
                 cancellationToken);
             LogReservationCreated(result.Reservation.Id, command.PartySize);
+
+            await realtimeNotifier.NotifyReservationCreatedAsync(
+                new ReservationChangedNotification(
+                    result.Reservation.Id, result.Reservation.CustomerName, result.Reservation.PartySize,
+                    result.Reservation.ReservationDateTime, result.Reservation.Status.ToString(), result.Reservation.TableId),
+                cancellationToken);
         }
 
         return result;

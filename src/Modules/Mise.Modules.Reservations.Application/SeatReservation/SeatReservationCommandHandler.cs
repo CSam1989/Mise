@@ -26,6 +26,7 @@ public sealed partial class SeatReservationCommandHandler(
     ITableAvailabilityLookup tableAvailabilityLookup,
     IAuditWriter auditWriter,
     IDomainEventPublisher domainEventPublisher,
+    IRealtimeNotifier realtimeNotifier,
     IValidator<SeatReservationCommand> validator,
     TimeProvider timeProvider,
     ILogger<SeatReservationCommandHandler> logger)
@@ -80,6 +81,16 @@ public sealed partial class SeatReservationCommandHandler(
                 },
                 cancellationToken);
             LogReservationSeated(command.ReservationId, command.TableId);
+
+            // ADR-008: Seat is a status transition, not a distinct wire event — it notifies as
+            // ReservationUpdated, same as any other field-level change, gated by
+            // WasAlreadyProcessed same as the audit write (unlike the cross-module
+            // ReservationSeated dispatch below, which deliberately redispatches on replay).
+            await realtimeNotifier.NotifyReservationUpdatedAsync(
+                new ReservationChangedNotification(
+                    result.Reservation.Id, result.Reservation.CustomerName, result.Reservation.PartySize,
+                    result.Reservation.ReservationDateTime, result.Reservation.Status.ToString(), result.Reservation.TableId),
+                cancellationToken);
         }
 
         await domainEventPublisher.PublishAsync(

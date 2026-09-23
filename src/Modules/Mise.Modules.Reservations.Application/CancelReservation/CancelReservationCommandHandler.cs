@@ -20,6 +20,7 @@ public sealed partial class CancelReservationCommandHandler(
     IReservationsData reservationsData,
     IAuditWriter auditWriter,
     IDomainEventPublisher domainEventPublisher,
+    IRealtimeNotifier realtimeNotifier,
     TimeProvider timeProvider,
     ILogger<CancelReservationCommandHandler> logger)
 {
@@ -63,6 +64,12 @@ public sealed partial class CancelReservationCommandHandler(
                 },
                 cancellationToken);
             LogReservationCancelled(command.ReservationId);
+
+            await realtimeNotifier.NotifyReservationCancelledAsync(
+                new ReservationChangedNotification(
+                    result.Reservation.Id, result.Reservation.CustomerName, result.Reservation.PartySize,
+                    result.Reservation.ReservationDateTime, result.Reservation.Status.ToString(), result.Reservation.TableId),
+                cancellationToken);
         }
 
         if (tableId is { } id)

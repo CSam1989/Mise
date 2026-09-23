@@ -3,7 +3,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -101,6 +103,34 @@ public sealed class MiseApiFixture : IAsyncLifetime
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", MintTestToken(staffId ?? DefaultStaffId, role: role));
         return client;
+    }
+
+    /// <summary>
+    /// Phase 8's FloorPlanHubTests — a real HubConnection against the TestServer, exactly per
+    /// docs/plan.md's "Testing the hard subsystems" guidance: pinned to LongPolling (WebSockets
+    /// don't survive a WebApplicationFactory's in-memory TestServer), the JWT supplied via
+    /// AccessTokenProvider rather than a header (SignalR negotiates its own transports, which is
+    /// also why Mise.ApiService's JWT-bearer handler has to accept the token from the
+    /// access_token query string on this one route — see CLAUDE.md's "Real-time propagation"
+    /// section). The route is the literal wire contract (Mise.ApiService.Realtime.FloorPlanHub.
+    /// RoutePattern) rather than a reference through the `ApiService` assembly alias, matching
+    /// every other test in this project's own "assert on the wire, not the type" convention.
+    /// </summary>
+    /// <summary>A null <paramref name="role"/> connects with no access token at all — used by
+    /// FloorPlanHubTests' unauthenticated-rejection proof.</summary>
+    public HubConnection CreateHubConnection(Guid? staffId = null, string? role = "FloorStaff")
+    {
+        var token = role is null ? null : MintTestToken(staffId ?? DefaultStaffId, role: role);
+        var client = _factory!.CreateClient();
+
+        return new HubConnectionBuilder()
+            .WithUrl(new Uri(client.BaseAddress!, "/hubs/floorplan"), options =>
+            {
+                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                options.Transports = HttpTransportType.LongPolling;
+                options.AccessTokenProvider = () => Task.FromResult(token);
+            })
+            .Build();
     }
 
     /// <summary>The staff id CreateAuthenticatedClient() uses when no specific id is given —

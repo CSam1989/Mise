@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using Mise.ApiService;
+using Mise.ApiService.Realtime;
 using Mise.ApiService.Reservations;
 using Mise.ApiService.Scheduling;
 using Mise.ApiService.Staff;
@@ -64,6 +65,15 @@ builder.Services.AddSingleton(TimeProvider.System);
 // DbContext) resolves correctly rather than being served from the root provider.
 builder.Services.AddScoped<IDomainEventPublisher, DomainEventPublisher>();
 
+// Phase 8 (FR-10/NFR-04/US-03) — the live-propagation port every mutating command handler calls
+// directly (ADR-008, CLAUDE.md's "Real-time propagation" section), parallel to IAuditWriter
+// rather than routed through IDomainEventPublisher above (see IRealtimeNotifier's own doc
+// comment for why). AddSignalR() registers IHubContext<FloorPlanHub> as a singleton; Scoped
+// here purely for consistency with every other cross-cutting port's registration style — a
+// singleton IHubContext is safe to resolve from a scoped consumer either way.
+builder.Services.AddSignalR();
+builder.Services.AddScoped<IRealtimeNotifier, SignalRRealtimeNotifier>();
+
 // JWT-bearer validation — unchanged in shape since Phase 2's placeholder spine (CLAUDE.md:
 // "the validation side already wired here" survives StaffIdentity landing). Only the minting
 // side moved, from Mise.Web's fixed system identity to StaffIdentity's real per-staff tokens
@@ -86,6 +96,27 @@ builder.Services
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+        };
+
+        // SignalR's browser/MAUI clients can't attach an Authorization header to the transports
+        // FloorPlanHub actually negotiates (WebSockets/long-polling), so the JWT-bearer handler
+        // has to also accept the token from the query string on the hub's own path — the
+        // standard ASP.NET Core SignalR + JWT pattern (see CLAUDE.md's "Real-time propagation"
+        // section). Scoped to FloorPlanHub.RoutePattern specifically: every other endpoint keeps
+        // requiring a real Authorization header, unaffected by this.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments(FloorPlanHub.RoutePattern))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            },
         };
     });
 
@@ -175,6 +206,8 @@ app.MapSectionsEndpoints();
 app.MapTablesEndpoints();
 app.MapTableGroupsEndpoints();
 app.MapServicePeriodsEndpoints();
+
+app.MapHub<FloorPlanHub>(FloorPlanHub.RoutePattern);
 
 app.MapDefaultEndpoints();
 

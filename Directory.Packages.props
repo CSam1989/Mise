@@ -126,4 +126,15 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
   </ItemGroup>
+
+  <!-- Phase 8 — SignalR hub + live propagation. Server-side Microsoft.AspNetCore.SignalR ships
+       as part of the Microsoft.AspNetCore.App shared framework Mise.ApiService already targets
+       (Microsoft.NET.Sdk.Web) — no PackageVersion needed for it. The *client* package is only
+       needed where something actually opens a HubConnection, which today is only
+       Mise.IntegrationTests' FloorPlanHubTests (the concrete Mise.Web/MAUI client lands with
+       Phase 10's floor-plan screen — see Mise.UI.Abstractions' IFloorPlanStream doc comment).
+       Pinned to the same 10.0.12 patch as the rest of the ASP.NET Core family above. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
+  </ItemGroup>
 </Project>

@@ -17,6 +17,7 @@ public sealed partial class ReservationTableVacatedHandler(
     ITablesData tablesData,
     IReservationLookup reservationLookup,
     IAuditWriter auditWriter,
+    IRealtimeNotifier realtimeNotifier,
     TimeProvider timeProvider,
     ILogger<ReservationTableVacatedHandler> logger)
     : IDomainEventHandler<ReservationTableVacated>
@@ -68,6 +69,9 @@ public sealed partial class ReservationTableVacatedHandler(
             },
             cancellationToken);
         LogTableReleased(domainEvent.TableId, domainEvent.ReservationId);
+
+        await realtimeNotifier.NotifyTableStatusChangedAsync(
+            new TableStatusChangedNotification(domainEvent.TableId, current.Table.Status.ToString()), cancellationToken);
     }
 
     [LoggerMessage(EventId = 80, Level = LogLevel.Information, Message = "Table {TableId} released back to Available after reservation {ReservationId} vacated it.")]

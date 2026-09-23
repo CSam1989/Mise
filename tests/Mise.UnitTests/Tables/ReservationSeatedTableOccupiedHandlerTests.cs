@@ -14,13 +14,15 @@ public class ReservationSeatedTableOccupiedHandlerTests
 {
     private readonly Mock<ITablesData> _tablesData = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly ReservationSeatedTableOccupiedHandler _sut;
 
     public ReservationSeatedTableOccupiedHandlerTests()
     {
         _sut = new ReservationSeatedTableOccupiedHandler(
-            _tablesData.Object, _auditWriter.Object, _timeProvider, NullLogger<ReservationSeatedTableOccupiedHandler>.Instance);
+            _tablesData.Object, _auditWriter.Object, _realtimeNotifier.Object, _timeProvider,
+            NullLogger<ReservationSeatedTableOccupiedHandler>.Instance);
     }
 
     private static Table ExistingTable() => Table.Create(Guid.NewGuid(), Guid.NewGuid(), "T12", 2, 4, false, null, null);
@@ -44,6 +46,10 @@ public class ReservationSeatedTableOccupiedHandlerTests
         _auditWriter.Verify(
             a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Occupied"), It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(
+                It.Is<TableStatusChangedNotification>(p => p.TableId == table.Id && p.Status == "Occupied"), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -60,6 +66,8 @@ public class ReservationSeatedTableOccupiedHandlerTests
             d => d.ChangeTableStatusAsync(It.IsAny<Table>(), It.IsAny<uint>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never,
             "a replayed event that already applied cleanly must not force a redundant write.");
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -72,6 +80,8 @@ public class ReservationSeatedTableOccupiedHandlerTests
 
         await act.Should().NotThrowAsync(because: "a genuinely impossible race (the table existed moments earlier in the same request) is logged, not retried.");
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -89,5 +99,7 @@ public class ReservationSeatedTableOccupiedHandlerTests
         await act.Should().ThrowAsync<ConcurrencyConflictException>(
             because: "unlike the not-found case, this is transient and retry-recoverable — it must propagate so a client retry can heal it.");
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

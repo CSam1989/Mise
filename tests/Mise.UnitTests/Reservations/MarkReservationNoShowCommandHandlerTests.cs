@@ -15,13 +15,14 @@ public class MarkReservationNoShowCommandHandlerTests
     private readonly Mock<IReservationsData> _reservationsData = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
     private readonly Mock<IDomainEventPublisher> _domainEventPublisher = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly MarkReservationNoShowCommandHandler _sut;
 
     public MarkReservationNoShowCommandHandlerTests()
     {
         _sut = new MarkReservationNoShowCommandHandler(
-            _reservationsData.Object, _auditWriter.Object, _domainEventPublisher.Object, _timeProvider,
+            _reservationsData.Object, _auditWriter.Object, _domainEventPublisher.Object, _realtimeNotifier.Object, _timeProvider,
             NullLogger<MarkReservationNoShowCommandHandler>.Instance);
     }
 
@@ -65,6 +66,10 @@ public class MarkReservationNoShowCommandHandlerTests
         _auditWriter.Verify(
             a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "NoShow"), It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(
+                It.Is<ReservationChangedNotification>(p => p.ReservationId == reservation.Id), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -83,6 +88,8 @@ public class MarkReservationNoShowCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -99,6 +106,8 @@ public class MarkReservationNoShowCommandHandlerTests
         await _sut.HandleAsync(command, CancellationToken.None);
 
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

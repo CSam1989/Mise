@@ -15,13 +15,14 @@ public class ReservationTableVacatedHandlerTests
     private readonly Mock<ITablesData> _tablesData = new();
     private readonly Mock<IReservationLookup> _reservationLookup = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly ReservationTableVacatedHandler _sut;
 
     public ReservationTableVacatedHandlerTests()
     {
         _sut = new ReservationTableVacatedHandler(
-            _tablesData.Object, _reservationLookup.Object, _auditWriter.Object, _timeProvider,
+            _tablesData.Object, _reservationLookup.Object, _auditWriter.Object, _realtimeNotifier.Object, _timeProvider,
             NullLogger<ReservationTableVacatedHandler>.Instance);
     }
 
@@ -57,6 +58,10 @@ public class ReservationTableVacatedHandlerTests
         _auditWriter.Verify(
             a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Released"), It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(
+                It.Is<TableStatusChangedNotification>(p => p.TableId == table.Id && p.Status == "Available"), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -73,6 +78,8 @@ public class ReservationTableVacatedHandlerTests
         _tablesData.Verify(
             d => d.ChangeTableStatusAsync(It.IsAny<Table>(), It.IsAny<uint>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]
@@ -91,6 +98,8 @@ public class ReservationTableVacatedHandlerTests
         table.Status.Should().Be(status, because: "an automatic release must never clobber a staff-driven FR-06 override.");
         _tablesData.Verify(
             d => d.ChangeTableStatusAsync(It.IsAny<Table>(), It.IsAny<uint>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -103,6 +112,8 @@ public class ReservationTableVacatedHandlerTests
 
         await act.Should().NotThrowAsync();
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -120,5 +131,7 @@ public class ReservationTableVacatedHandlerTests
 
         await act.Should().ThrowAsync<ConcurrencyConflictException>();
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

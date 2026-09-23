@@ -14,13 +14,14 @@ public class ChangeTableStatusCommandHandlerTests
 {
     private readonly Mock<ITablesData> _tablesData = new();
     private readonly Mock<IAuditWriter> _auditWriter = new();
+    private readonly Mock<IRealtimeNotifier> _realtimeNotifier = new();
     private readonly FakeTimeProvider _timeProvider = new(DateTimeOffset.Parse("2026-09-15T18:00:00+02:00"));
     private readonly ChangeTableStatusCommandHandler _sut;
 
     public ChangeTableStatusCommandHandlerTests()
     {
         _sut = new ChangeTableStatusCommandHandler(
-            _tablesData.Object, _auditWriter.Object, new ChangeTableStatusCommandValidator(), _timeProvider,
+            _tablesData.Object, _auditWriter.Object, _realtimeNotifier.Object, new ChangeTableStatusCommandValidator(), _timeProvider,
             NullLogger<ChangeTableStatusCommandHandler>.Instance);
     }
 
@@ -74,6 +75,10 @@ public class ChangeTableStatusCommandHandlerTests
                 It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "StatusChanged" && e.Details == "NeedsCleaning"),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(
+                It.Is<TableStatusChangedNotification>(p => p.TableId == table.Id && p.Status == "NeedsCleaning"), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -92,6 +97,8 @@ public class ChangeTableStatusCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -108,5 +115,7 @@ public class ChangeTableStatusCommandHandlerTests
         await _sut.HandleAsync(command, CancellationToken.None);
 
         _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _realtimeNotifier.Verify(
+            n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -9,7 +9,7 @@ this repo's early commits, or ask for a copy of the working plan doc.
 
 ## Status
 
-Phases 0-6 are done. Four modules are registered: `Mise.Modules.Reservations` (Phase 2's walking
+Phases 0-8 are done. Four modules are registered: `Mise.Modules.Reservations` (Phase 2's walking
 skeleton grown, in Phase 6, into the real aggregate — phone/email/notes/table assignment/
 `xmin`, `Update`/`Cancel` alongside `Create`, US-02 search, and BR-01's Postgres exclusion
 constraint for "no overlapping reservations on one table"), `Mise.Modules.StaffIdentity`
@@ -43,15 +43,25 @@ the one field above. The shared RCL screens (including the live floor-plan board
 Phase 10. Reservations still has no cross-module link to Scheduling (a reservation can be made
 outside any defined service period — FR-08 validation isn't in Phase 6's charter refs), and
 BR-01 doesn't extend across a `TableGroup`'s other members (a known, documented gap — see
-CLAUDE.md). Seating (`Seated`/`Completed`/`NoShow`, BR-04/BR-05, the cross-module table-status
-event) is Phase 7.
+CLAUDE.md).
 
-One-time setup (unchanged since Phase 3 — Phase 4/5/6 added no new secrets): run `dotnet
+Phase 7 makes seating real (FR-05/FR-06, BR-04/BR-05): `Seated`/`NoShow` are reachable,
+`PATCH /api/tables/{id}/status` lets FloorStaff change a table's status directly, and the first
+cross-module *write* lands (`ReservationSeated`/`ReservationTableVacated` domain events, ADR-007,
+handled by the Tables module to flip `Table.Status`). Phase 8 adds the SignalR hub
+(`/hubs/floorplan`) broadcasting `TableStatusChanged`/`ReservationCreated`/`ReservationUpdated`/
+`ReservationCancelled` to every connected staff device (FR-10/NFR-04/US-03) — see CLAUDE.md's
+ADR-008 for the frozen event-name design and why the broadcast port is called directly rather
+than routed through the cross-module domain-event mechanism. Both phases are still API-only —
+no Blazor UI, same deferral every phase since 4 has made; the shared RCL's live floor-plan
+screen (and `IFloorPlanStream`'s first concrete client) lands in Phase 10.
+
+One-time setup (unchanged since Phase 3 — Phase 4/5/6/7/8 added no new secrets): run `dotnet
 user-secrets set Parameters:seed-manager-password <any-random-string>` from `src/Mise.AppHost`
 before your first `aspire run` (alongside Phase 2's `jwt-signing-key`) — `Mise.MigrationService`
 seeds exactly one bootstrap Manager account (username `manager` by default, overridable via
 `Parameters:seed-manager-username`) so there's someone who can register further staff at all. See
-[docs/Phase-6-Manual-Test-Checklist.md](docs/Phase-6-Manual-Test-Checklist.md) for the full
+[docs/Phase-8-Manual-Test-Checklist.md](docs/Phase-8-Manual-Test-Checklist.md) for the full
 one-time setup and a guided walkthrough of what's landed most recently.
 
 ## Prerequisites
@@ -96,12 +106,12 @@ every `*.Domain`/`*.Application` assembly — see `CLAUDE.md`).
 Mise.slnx
 ├── src/
 │   ├── Mise.AppHost                Aspire orchestrator (dev-time only; never referenced elsewhere)
-│   ├── Mise.ApiService              REST API host + placeholder auth (gains the SignalR hub + real Identity later)
+│   ├── Mise.ApiService              REST API host — real StaffIdentity auth + the SignalR floor-plan hub (Realtime/)
 │   ├── Mise.MigrationService        One-shot worker: migrates every module's DbContext, then exits
 │   ├── Mise.Web                     Blazor Server UI — an API client, not an in-process caller
 │   ├── Mise.ServiceDefaults          OpenTelemetry, health checks, service discovery, resilience
 │   ├── Mise.SharedKernel              Entity/AggregateRoot, IDomainEvent, Result, guard clauses
-│   ├── Mise.SharedKernel.Infrastructure  IAuditWriter / AuditLogEntry — cross-cutting, not module-owned
+│   ├── Mise.SharedKernel.Infrastructure  IAuditWriter/IRealtimeNotifier — cross-cutting, not module-owned
 │   ├── Mise.SharedKernel.Persistence  EF-aware home for ProcessedOperation + AuditWriter<T> (module Infrastructure only, never Application)
 │   ├── Modules/
 │   │   ├── Mise.Modules.Reservations.{Domain,Application,Infrastructure,Contracts}
@@ -109,7 +119,7 @@ Mise.slnx
 │   │   ├── Mise.Modules.Tables.{Domain,Application,Infrastructure,Contracts}
 │   │   └── Mise.Modules.Scheduling.{Domain,Application,Infrastructure,Contracts}
 │   └── UI/
-│       ├── Mise.UI.Abstractions      Transport-agnostic client interfaces (IReservationsClient, IStaffAuthClient, …)
+│       ├── Mise.UI.Abstractions      Transport-agnostic client interfaces (IReservationsClient, IFloorPlanStream, …)
 │       └── Mise.UI.Components        The shared RCL both Blazor Server and MAUI render (ReservationForm, …)
 ├── tests/
 │   ├── Mise.UnitTests             Domain/Application unit tests, gateway ports mocked
@@ -123,7 +133,9 @@ Mise.slnx
     ├── Phase-3-Manual-Test-Checklist.md
     ├── Phase-4-Manual-Test-Checklist.md
     ├── Phase-5-Manual-Test-Checklist.md
-    └── Phase-6-Manual-Test-Checklist.md
+    ├── Phase-6-Manual-Test-Checklist.md
+    ├── Phase-7-Manual-Test-Checklist.md
+    └── Phase-8-Manual-Test-Checklist.md
 ```
 
 ## Conventions
