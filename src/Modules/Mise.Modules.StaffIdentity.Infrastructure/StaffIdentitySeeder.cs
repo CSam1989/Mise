@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.StaffIdentity.Domain;
 using Mise.Modules.StaffIdentity.Infrastructure.Persistence;
+using Mise.SharedKernel.Infrastructure;
 
 namespace Mise.Modules.StaffIdentity.Infrastructure;
 
@@ -12,14 +13,19 @@ namespace Mise.Modules.StaffIdentity.Infrastructure;
 /// reach it. Called directly by Mise.MigrationService (bypassing the Application layer
 /// entirely, the same way MigrationService already reaches into ReservationsDbContext
 /// directly to run migrations) since seeding is a startup/ops concern, not a business use
-/// case — it has no OperationId, no audit attribution (no Manager exists yet to attribute
-/// to), and no caller-facing validation contract. Idempotent: safe to run on every
-/// Mise.MigrationService start.
+/// case — it has no OperationId and no caller-facing validation contract. It does still stage
+/// an audit entry (attributed to <c>PerformedBySystemProcess</c>, not a staff id — no Manager
+/// exists yet to attribute to), the first real call site for that field: found only while
+/// planning Phase 9's <c>AuditCompletenessInterceptor</c>, which marks <see cref="StaffUser"/>
+/// as an <see cref="IAuditableEntity"/> — without this, the interceptor would fail this exact
+/// <c>SaveChangesAsync</c> call and permanently break bootstrap (nobody could ever seed the
+/// first Manager). Idempotent: safe to run on every Mise.MigrationService start.
 /// </summary>
 public sealed partial class StaffIdentitySeeder(
     StaffIdentityDbContext dbContext,
     UserManager<StaffIdentityUser> userManager,
     IUserStore<StaffIdentityUser> userStore,
+    TimeProvider timeProvider,
     ILogger<StaffIdentitySeeder> logger)
 {
     public async Task<bool> EnsureManagerExistsAsync(
@@ -47,6 +53,17 @@ public sealed partial class StaffIdentitySeeder(
         }
 
         dbContext.StaffUsers.Add(staffUser);
+        dbContext.Set<AuditLogEntry>().Add(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "StaffUser",
+            EntityId = staffUser.Id,
+            Action = "Created",
+            PerformedByStaffId = null,
+            PerformedBySystemProcess = "StaffIdentitySeeder",
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = "Bootstrap seed Manager account.",
+        });
         await dbContext.SaveChangesAsync(cancellationToken);
 
         LogSeedManagerCreated(staffUser.Id);

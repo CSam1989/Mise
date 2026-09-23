@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.StaffIdentity.Application.Ports;
 using Mise.SharedKernel.Infrastructure;
@@ -18,7 +19,7 @@ namespace Mise.Modules.StaffIdentity.Application.Login;
 public sealed partial class LoginCommandHandler(
     IStaffIdentityData staffIdentityData,
     IJwtTokenIssuer jwtTokenIssuer,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.StaffIdentity)] IAuditWriter auditWriter,
     IValidator<LoginCommand> validator,
     TimeProvider timeProvider,
     ILogger<LoginCommandHandler> logger)

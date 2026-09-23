@@ -460,4 +460,59 @@ public class TablesEndpointTests(MiseApiFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+
+    // --- Audit history (Phase 9, US-05 AC #2) ---------------------------------------------
+
+    [Fact]
+    public async Task GetTableAuditHistory_TableHasHistory_ReturnsEntriesNewestFirst()
+    {
+        var (id, etag) = await CreateTableWithETagAsync();
+        var statusRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/tables/{id}/status")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid(), Status = "NeedsCleaning" }),
+        };
+        statusRequest.Headers.TryAddWithoutValidation("If-Match", etag);
+        await ManagerClient.SendAsync(statusRequest, CT);
+
+        var response = await ManagerClient.GetAsync($"/api/tables/{id}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        var entries = json!.RootElement.EnumerateArray().ToArray();
+        entries.Should().HaveCount(2, because: "Create then StatusChanged each write exactly one audit entry.");
+        entries[0].GetProperty("action").GetString().Should().Be("StatusChanged", because: "newest first.");
+        entries[1].GetProperty("action").GetString().Should().Be("Created");
+    }
+
+    [Fact]
+    public async Task GetTableAuditHistory_NoHistory_Returns200WithEmptyArray()
+    {
+        var response = await ManagerClient.GetAsync($"/api/tables/{Guid.NewGuid()}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetTableAuditHistory_CallerIsFloorStaff_Returns403()
+    {
+        var (id, _) = await CreateTableWithETagAsync();
+        var floorStaffClient = fixture.CreateAuthenticatedClient(Guid.NewGuid(), role: "FloorStaff");
+
+        var response = await floorStaffClient.GetAsync($"/api/tables/{id}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            because: "US-05 frames audit history as a Manager accountability concern, unlike FR-06's FloorStaff-or-Manager status change.");
+    }
+
+    [Fact]
+    public async Task GetTableAuditHistory_Unauthenticated_Returns401()
+    {
+        var (id, _) = await CreateTableWithETagAsync();
+
+        var response = await fixture.CreateClient().GetAsync($"/api/tables/{id}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
 }

@@ -38,7 +38,7 @@ public class CreateServicePeriodCommandHandlerTests
         _schedulingData.Verify(
             d => d.CreateServicePeriodAsync(It.IsAny<ServicePeriod>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -48,24 +48,27 @@ public class CreateServicePeriodCommandHandlerTests
         var servicePeriod = ServicePeriod.Create(
             Guid.NewGuid(), command.Date, command.Label, command.StartTime, command.EndTime,
             command.EndsNextDay, command.IsClosed);
+        ServicePeriod? passedServicePeriod = null;
         _schedulingData
             .Setup(d => d.CreateServicePeriodAsync(It.IsAny<ServicePeriod>(), command.OperationId, It.IsAny<CancellationToken>()))
+            .Callback<ServicePeriod, Guid, CancellationToken>((s, _, _) => passedServicePeriod = s)
             .ReturnsAsync(new ServicePeriodMutationResult(servicePeriod, WasAlreadyProcessed: false));
 
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().Be(servicePeriod.Id);
         _auditWriter.Verify(
-            a => a.WriteAsync(
+            a => a.Stage(
                 It.Is<AuditLogEntry>(e =>
-                    e.EntityType == "ServicePeriod" && e.EntityId == servicePeriod.Id && e.Action == "Created"
-                    && e.PerformedByStaffId == command.PerformedByStaffId && e.OccurredAtUtc == _timeProvider.GetUtcNow()),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+                    e.EntityType == "ServicePeriod" && e.EntityId == passedServicePeriod!.Id && e.Action == "Created"
+                    && e.PerformedByStaffId == command.PerformedByStaffId && e.OccurredAtUtc == _timeProvider.GetUtcNow())),
+            Times.Once,
+            "EntityId is the handler's own client-generated ServicePeriod.Id, staged before the gateway call — not " +
+            "the mocked gateway result's (unrelated) servicePeriod object.");
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingIdAndSkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingIdAndStagesAuditEntryRegardless()
     {
         var command = ValidCommand();
         var existing = ServicePeriod.Create(
@@ -77,6 +80,10 @@ public class CreateServicePeriodCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().Be(existing.Id);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

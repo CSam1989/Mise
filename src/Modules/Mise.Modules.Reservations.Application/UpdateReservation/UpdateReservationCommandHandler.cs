@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Application.Ports;
 using Mise.Modules.Reservations.Domain;
@@ -18,7 +19,7 @@ namespace Mise.Modules.Reservations.Application.UpdateReservation;
 public sealed partial class UpdateReservationCommandHandler(
     IReservationsData reservationsData,
     ITableAvailabilityLookup tableAvailabilityLookup,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Reservations)] IAuditWriter auditWriter,
     IRealtimeNotifier realtimeNotifier,
     IValidator<UpdateReservationCommand> validator,
     TimeProvider timeProvider,
@@ -42,6 +43,19 @@ public sealed partial class UpdateReservationCommandHandler(
             command.ReservationDateTime, command.DurationMinutes, command.TableId, command.Notes,
             timeProvider.GetUtcNow());
 
+        // Staged before the gateway call, unconditionally — see CreateReservationCommandHandler's
+        // doc comment on this same pattern (AuditCompletenessInterceptor, Phase 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Reservation",
+            EntityId = command.ReservationId,
+            Action = "Updated",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Party of {command.PartySize}.",
+        });
+
         var result = await reservationsData.UpdateReservationAsync(
             current.Reservation, command.ExpectedVersion, command.OperationId, cancellationToken);
 
@@ -64,18 +78,6 @@ public sealed partial class UpdateReservationCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Reservation",
-                    EntityId = command.ReservationId,
-                    Action = "Updated",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = $"Party of {command.PartySize}.",
-                },
-                cancellationToken);
             LogReservationUpdated(command.ReservationId);
 
             await realtimeNotifier.NotifyReservationUpdatedAsync(

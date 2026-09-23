@@ -1034,4 +1034,113 @@ public class ReservationsEndpointTests(MiseApiFixture fixture)
         (await GetTableStatusAsync(tableId)).Should().Be(tableId,
             because: "the later, still-Confirmed reservation currently covers 'now' on the same table — BR-05's 'unless' clause.");
     }
+
+    // --- Audit history (Phase 9, US-05 AC #2) ---------------------------------------------
+
+    [Fact]
+    public async Task GetReservationAuditHistory_ReservationHasHistory_ReturnsEntriesNewestFirst()
+    {
+        var (id, etag) = await CreateReservationAsync();
+
+        var updateRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}")
+        {
+            Content = JsonContent.Create(UpdateBody()),
+        };
+        updateRequest.Headers.TryAddWithoutValidation("If-Match", etag);
+        await ManagerClient.SendAsync(updateRequest, CT);
+
+        var response = await ManagerClient.GetAsync($"/api/reservations/{id}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        var entries = json!.RootElement.EnumerateArray().ToArray();
+        entries.Should().HaveCount(2, because: "Create then Update each write exactly one audit entry.");
+        entries[0].GetProperty("action").GetString().Should().Be("Updated", because: "newest first.");
+        entries[1].GetProperty("action").GetString().Should().Be("Created");
+        entries[0].GetProperty("performedByStaffId").GetGuid().Should().Be(MiseApiFixture.DefaultStaffId);
+    }
+
+    [Fact]
+    public async Task GetReservationAuditHistory_NoHistory_Returns200WithEmptyArray()
+    {
+        var response = await ManagerClient.GetAsync($"/api/reservations/{Guid.NewGuid()}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            because: "this endpoint answers 'does this id have history', not 'does the reservation exist' — an empty array either way.");
+        var json = await response.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        json!.RootElement.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetReservationAuditHistory_CallerIsFloorStaff_Returns403()
+    {
+        var (id, _) = await CreateReservationAsync();
+        var floorStaffClient = fixture.CreateAuthenticatedClient(Guid.NewGuid(), role: "FloorStaff");
+
+        var response = await floorStaffClient.GetAsync($"/api/reservations/{id}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            because: "US-05 frames audit history as a Manager accountability concern, unlike FR-01-03's FloorStaff-or-Manager reservation mutations.");
+    }
+
+    [Fact]
+    public async Task GetReservationAuditHistory_Unauthenticated_Returns401()
+    {
+        var (id, _) = await CreateReservationAsync();
+
+        var response = await fixture.CreateClient().GetAsync($"/api/reservations/{id}/audit-history", CT);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // --- PII redaction (charter correction #4) --------------------------------------------
+
+    [Fact]
+    public async Task Reservation_MutatedThroughFullLifecycle_AuditDetailsNeverContainCustomerPhoneOrEmail()
+    {
+        // Every Details value written today is already hand-redacted (see
+        // CreateReservationCommandHandler's own comment on this) — this test's job is purely
+        // regression: if a future change to any of these handlers starts interpolating
+        // CustomerPhone/CustomerEmail into Details, this is what catches it.
+        const string phone = "+32 499 88 77 66";
+        const string email = "audit-redaction-check@example.test";
+
+        var createResponse = await ManagerClient.PostAsJsonAsync(
+            "/api/reservations", ValidBody(customerPhone: phone, customerEmail: email), CT);
+        var createJson = await createResponse.Content.ReadFromJsonAsync<JsonDocument>(CT);
+        var id = createJson!.RootElement.GetProperty("id").GetGuid();
+        var etag = createResponse.Headers.ETag!.Tag;
+
+        var updateRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}")
+        {
+            Content = JsonContent.Create(UpdateBody(customerPhone: phone)),
+        };
+        updateRequest.Headers.TryAddWithoutValidation("If-Match", etag);
+        var updateResponse = await ManagerClient.SendAsync(updateRequest, CT);
+        var updateEtag = updateResponse.Headers.ETag!.Tag;
+
+        var cancelRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/reservations/{id}/cancel")
+        {
+            Content = JsonContent.Create(new { OperationId = Guid.NewGuid() }),
+        };
+        cancelRequest.Headers.TryAddWithoutValidation("If-Match", updateEtag);
+        await ManagerClient.SendAsync(cancelRequest, CT);
+
+        await using var connection = new NpgsqlConnection(fixture.ConnectionString);
+        await connection.OpenAsync(CT);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select details from shared.audit_log_entry where entity_id = @id";
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(CT);
+
+        var detailsValues = new List<string>();
+        while (await reader.ReadAsync(CT))
+        {
+            detailsValues.Add(reader.GetString(0));
+        }
+
+        detailsValues.Should().HaveCount(3, because: "Create + Update + Cancel each write exactly one audit entry.");
+        detailsValues.Should().OnlyContain(d => !d.Contains(phone), because: "Details must never leak the customer's phone number.");
+        detailsValues.Should().OnlyContain(d => !d.Contains(email), because: "Details must never leak the customer's email address.");
+    }
 }

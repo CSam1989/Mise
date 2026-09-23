@@ -52,7 +52,7 @@ public class DeactivateSectionCommandHandlerTests
             because: "docs/plan.md correction #12 — a section with active tables must be blocked with a clear reason, same field-scoped 400 shape as RegisterStaffCommandHandler's taken-username check.");
         exception.Which.Errors.Should().ContainSingle(e => e.PropertyName == nameof(DeactivateSectionCommand.SectionId));
         section.IsActive.Should().BeTrue(because: "a rejected deactivation must not partially apply.");
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -71,9 +71,8 @@ public class DeactivateSectionCommandHandlerTests
         result.Should().NotBeNull();
         section.IsActive.Should().BeFalse();
         _auditWriter.Verify(
-            a => a.WriteAsync(
-                It.Is<AuditLogEntry>(e => e.EntityType == "Section" && e.EntityId == section.Id && e.Action == "Deactivated"),
-                It.IsAny<CancellationToken>()),
+            a => a.Stage(
+                It.Is<AuditLogEntry>(e => e.EntityType == "Section" && e.EntityId == section.Id && e.Action == "Deactivated")),
             Times.Once);
     }
 }

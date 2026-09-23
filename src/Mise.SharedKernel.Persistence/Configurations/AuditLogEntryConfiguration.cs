@@ -28,5 +28,10 @@ public sealed class AuditLogEntryConfiguration(bool excludeFromMigrations = fals
         builder.Property(a => a.PerformedBySystemProcess).HasColumnName("performed_by_system_process").HasMaxLength(200);
         builder.Property(a => a.OccurredAtUtc).HasColumnName("occurred_at_utc").HasColumnType("timestamptz").IsRequired();
         builder.Property(a => a.Details).HasColumnName("details").IsRequired();
+
+        // Phase 9 (ADR-009) — supports IAuditReader.GetHistoryAsync's WHERE entity_type = ... AND
+        // entity_id = ... lookup (the new audit-history endpoints); previously only the PK index
+        // existed, making that query an unindexed scan.
+        builder.HasIndex(a => new { a.EntityType, a.EntityId }).HasDatabaseName("ix_audit_log_entry_entity_type_entity_id");
     }
 }

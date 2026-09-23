@@ -81,9 +81,12 @@ depends on (a Postgres exclusion constraint, `xmin` concurrency, `pg_trgm` searc
 every mutating command handler takes it as a constructor dependency, enforced at the
 architecture-test tier (`CrossCuttingTests.EveryCommandHandler_DependsOnSomethingImplementingIAuditWriter`,
 matched by parameter-type-name substring so it works before the type is even loaded). Phase 9
-adds the `SaveChangesInterceptor` guarantee that a handler holding the dependency actually
-*called* it; until then, calling it is on the handler author, same as every other rule not yet
-backed by a runtime check.
+(ADR-009, see that section below) adds the `AuditCompletenessInterceptor` runtime guarantee that
+a handler holding the dependency actually *called* it (via `Stage`, atomically with the
+mutation) — registered as a keyed DI service, one key per module
+(`Mise.SharedKernel.Infrastructure.AuditWriterKeys`), since four unkeyed registrations of the
+same `IAuditWriter` service type silently resolved every consumer to whichever module registered
+last.
 
 `shared.audit_log_entry` and `shared.processed_operation` (the `OperationId` idempotency
 table — see the per-feature test contract's mutating-endpoint row) moved to
@@ -702,6 +705,149 @@ per docs/plan.md) — nothing here asserts a delivery deadline.
 - **No nightly NFR-04 latency test yet** — docs/plan.md names this as a separate, later
   performance-test concern (p95 over N events plus a production OpenTelemetry histogram), not
   part of this phase's per-push gate.
+
+## Audit completeness (Phase 9 — FR-09, NFR-02, US-05, ADR-009)
+
+`IAuditWriter`'s write side has existed since Phase 2; what Phase 9 adds is the guarantee that a
+handler holding the dependency actually *used* it, atomically with the mutation it audits — plus
+the read side (US-05 AC #2) and a PII-redaction regression guard (charter correction #4's
+`AuditLogEntry` half).
+
+### ADR-009 — Marker-interface interceptor, stage-before-mutate, keyed DI per module
+
+**Status:** ACCEPTED. **Context:** `docs/plan.md`'s "Audit completeness" section names two
+complementary guardrails: an architecture rule catching a handler with no `IAuditWriter`
+dependency at all (already existed — `CrossCuttingTests.
+EveryCommandHandler_DependsOnSomethingImplementingIAuditWriter`), and an EF `SaveChangesInterceptor`
+catching a handler that *has* the dependency but never called it. Before this phase,
+`IAuditWriter.WriteAsync` added the entry and called `SaveChangesAsync` itself — a second,
+separate round trip from the mutation's own save. A crash between the two leaves a silent gap;
+worse, it makes the interceptor's job impossible to define precisely, since "the same
+`SaveChanges` call" requires the entry to already be staged before that call fires.
+
+**Decision, part 1 — a plain marker interface, not an ambient flag.** `Mise.SharedKernel.
+IAuditableEntity` (empty, no members) is implemented by the six aggregate roots that need an
+audit trail (`Reservation`, `Table`, `Section`, `TableGroup`, `ServicePeriod`, `StaffUser`) —
+explicit opt-in per aggregate, not every `AggregateRoot<TId>` automatically, since "is an
+aggregate root" and "requires an audit trail" are different concerns that only coincide today.
+`AuditCompletenessInterceptor` (`Mise.SharedKernel.Persistence`, EF-aware tier) overrides
+`SavingChangesAsync`: if the change tracker holds an Added/Modified/Deleted entry whose entity
+`is IAuditableEntity`, and no `Entries<AuditLogEntry>()` entry has `State == Added` in that same
+call, it throws `AuditCompletenessViolationException` — before any SQL is sent. Keying off the
+marker rather than "any entity change at all" is what keeps ASP.NET Identity's own internal
+writes (password rehash on login, security stamp updates touching `StaffIdentityUser`, which
+does **not** implement the marker) from ever tripping it.
+
+**Decision, part 2 — `IAuditWriter` gains `Stage(AuditLogEntry)`, synchronous, tracker-only.**
+`WriteAsync` (add + save immediately) stays, for the one case with no co-occurring mutation to
+attach to (`LoginCommandHandler`'s "SignedIn" entry — `ValidateCredentialsAsync` is a pure read).
+Every other command handler — the 17 `*CommandHandler`s that call a gateway mutation, plus the
+two Phase-7 cross-module event handlers (`ReservationSeatedTableOccupiedHandler`,
+`ReservationTableVacatedHandler`) — now calls `Stage` **before** the gateway/mutating call,
+unconditionally, instead of `WriteAsync` after it gated on `!WasAlreadyProcessed`. This works
+because every aggregate's `Id` is a client-generated `Guid.NewGuid()` known before the gateway
+call (verified for all six `Create` factories), and because every early-return path across all
+four modules' gateways — an `OperationId` replay, a BR-01 overlap pre-check, a
+`DbUpdateConcurrencyException`, `ServicePeriod`'s not-found-on-delete — returns *before* its own
+`SaveChangesAsync`. A staged-but-never-flushed entry on any of those paths is simply discarded
+when the request's scoped `DbContext` disposes — no explicit rollback needed, and a failed
+`SaveChangesAsync` rolls back the whole batch together regardless. One exception:
+`CreateTableGroupCommandHandler`'s own `FindExistingTableGroupIdAsync` replay check runs *before*
+`TableGroup.Create`/`Stage` are ever reached (the whole point of checking it first — see that
+handler's existing doc comment) — its replay test asserts `Stage` is never even called, not just
+never flushed, the one handler where that distinction is observable.
+
+**Decision, part 3 — `IAuditWriter` is a keyed DI service, one key per module.** Found while
+wiring this up, not by inspection: `IAuditWriter` had been registered once per module
+(`AddScoped<IAuditWriter, AuditWriter<TDbContext>>()`, closed over each module's own `DbContext`)
+since Phase 3, but all four registrations shared the same *unkeyed* service type — ASP.NET
+Core's container resolves a plain `IAuditWriter` request to whichever module registered **last**
+(Scheduling, per `Program.cs`'s registration order), regardless of which module's handler is
+asking. Invisible before this phase because `WriteAsync` saved itself immediately on whichever
+`DbContext` it actually got — `shared.audit_log_entry` is the identical physical table regardless
+of which module's connection sends the INSERT, so it didn't matter. `Stage` broke that
+accidental tolerance: staging onto the wrong module's `DbContext` instance leaves the *correct*
+one with a mutated `IAuditableEntity` and no staged entry, tripping the interceptor on every
+single create across three of the four modules the first time the full suite ran. Fixed with
+`Mise.SharedKernel.Infrastructure.AuditWriterKeys` (one string constant per module) — each
+`AddXPersistence` registers `AddKeyedScoped<IAuditWriter, AuditWriter<TDbContext>>(AuditWriterKeys.X)`,
+and every one of the 20 consuming handler constructors takes
+`[FromKeyedServices(AuditWriterKeys.X)] IAuditWriter auditWriter`. Plain string constants, not
+each module's own `DbContext` type, because a module's Application-layer handler — where the
+attribute lives — may never reference its own module's Infrastructure project (the boundary
+table). The attribute has no effect on direct `new HandlerType(mock.Object, ...)` construction,
+so none of the ~19 existing Moq-based unit tests needed to change for this specifically (they
+still needed the `WriteAsync`→`Stage` rename described below).
+
+**A second, unrelated pre-existing bug surfaced by the same interceptor, in the same debugging
+session:** `StaffIdentityData.RegisterStaffAsync`'s `AutoSaveChanges = false` guard — the thing
+that's supposed to make the Identity user, the `StaffUser` profile row, and the
+`ProcessedOperation` all commit atomically — has silently never worked, since Phase 3. Its type
+check read `is UserOnlyStore<StaffIdentityUser, StaffIdentityDbContext, Guid>` (3 type
+arguments), but `AddEntityFrameworkStores<TContext>()` actually registers the full 6-argument
+closure, `UserOnlyStore<TUser, TContext, TKey, TUserClaim, TUserLogin, TUserToken>` (defaulting
+the claim/login/token arguments to `IdentityUserClaim<Guid>`/`IdentityUserLogin<Guid>`/
+`IdentityUserToken<Guid>`). The check never matched, so `AutoSaveChanges` stayed at its default
+`true`, and `userManager.CreateAsync` below it triggered its own premature, separate
+`SaveChangesAsync` — harmless before Phase 9 (each half-save still individually succeeded), but
+it meant registration was never actually atomic despite this class's own doc comment claiming
+otherwise, and it's exactly the kind of gap the interceptor exists to catch: the *second*,
+explicit `SaveChangesAsync` call (`StaffUser` + `ProcessedOperation`) had no staged audit entry
+left to accompany it, since the first, premature save had already consumed and flushed it. Fixed
+by correcting the type check to the real 6-argument closure. Caught by running the full
+integration suite after the DI fix above, not by inspection — worth remembering the next time an
+Identity store type check silently no-ops instead of failing to compile.
+
+### Read side — `IAuditReader`, one registration for every entity type
+
+Unlike `IAuditWriter`, a read has no atomicity requirement tying it to any one module's own
+`DbContext` — every module's `DbContext` maps the identical physical `shared.audit_log_entry`
+table. `Mise.SharedKernel.Infrastructure.IAuditReader.GetHistoryAsync(entityType, entityId, ct)`
+(newest first) is implemented once as `AuditReader<TDbContext>` (`Mise.SharedKernel.Persistence`)
+and registered **once**, not per module, at `Mise.ApiService`'s composition root, backed by
+`ReservationsDbContext` (the table's migration owner). `GET /api/reservations/{id}/audit-history`
+and `GET /api/tables/{id}/audit-history` are Manager-only plain reads (US-05 frames this as an
+accountability concern, unlike FR-01–03/FR-06's FloorStaff-reachable mutations), same
+no-query-handler-class shape as `ServicePeriodsEndpoints.GetServicePeriodsForDateAsync` — return
+`200` with `[]` for an id with no history, never `404` (the endpoint answers "does this id have
+history", not "does the entity still exist"). A new migration
+(`AddAuditLogEntryEntityTypeEntityIdIndex`, Reservations, the sole `isOwner: true` module for
+this table) adds an index on `(entity_type, entity_id)` — previously only the PK was indexed, and
+both new endpoints filter on that pair. The Blazor screen (a reservation/table history view) is
+deferred to Phase 10 like every other UI screen since Phase 4 — only the API lands now.
+
+### PII redaction (charter correction #4, `AuditLogEntry` half only)
+
+Every `Details` value written across all 19 audit-staging call sites was already hand-redacted
+(e.g. `CreateReservationCommandHandler`'s `$"Party of {command.PartySize}."`, never
+`CustomerName`/`CustomerPhone`) — confirmed by grep, not assumed, before writing a test for it. No
+production code changed for this. What's new is a regression guard:
+`ReservationsEndpointTests.Reservation_MutatedThroughFullLifecycle_AuditDetailsNeverContainCustomerPhoneOrEmail`
+creates a reservation with a distinctive phone/email, updates and cancels it, then asserts none
+of the resulting `audit_log_entry.details` rows contain either value — the thing that actually
+catches a *future* handler accidentally interpolating PII, which hand inspection alone won't.
+The `ConflictRecord.SubmittedPayloadJson` half of correction #4 stays deferred — that type
+doesn't exist yet (a later phase's concern).
+
+### Scope boundaries — deliberate, not oversights
+
+- **An in-memory queue for decoupling the audit write from the mutation was considered and
+  rejected**, discussed and settled with the user before implementation. It can silently lose
+  staged entries across a process crash/restart — the one failure mode an audit trail exists to
+  survive — and it makes "the same `SaveChanges` call" interceptor design impossible to build at
+  all (there's no single call to inspect once the write is relocated to an async consumer). Even
+  a durable, externally-hosted queue (Redis/RabbitMQ) doesn't close this gap: writing to Postgres
+  and publishing to a separate broker is the classic dual-write problem, solvable only by writing
+  the audit row in the *same* database transaction as the mutation — which is exactly what
+  stage-before-mutate already does, at no extra infrastructure cost.
+- **Audit stays cross-cutting infrastructure in `Mise.SharedKernel`, not a new ADR-001-shaped
+  module.** A real module's `Application`/`Domain` can't be referenced by any other module (the
+  boundary table); `IAuditWriter`/`IAuditReader` are used by all four, which only `SharedKernel`
+  can be.
+- **No Blazor UI for audit history** — same deferral every phase since 4 has made; the API lands
+  now, the screen lands in Phase 10.
+- **`ConflictRecord.SubmittedPayloadJson` redaction stays deferred** — that type doesn't exist
+  until the offline/conflict phases.
 
 ## No mediator library (ADR-005)
 

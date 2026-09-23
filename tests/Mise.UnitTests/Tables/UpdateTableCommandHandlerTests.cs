@@ -45,7 +45,7 @@ public class UpdateTableCommandHandlerTests
 
         await act.Should().ThrowAsync<ValidationException>();
         _tablesData.Verify(d => d.GetTableByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class UpdateTableCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class UpdateTableCommandHandlerTests
         exception.Which.Errors.Should().ContainSingle(e => e.PropertyName == nameof(UpdateTableCommand.SectionId));
         _tablesData.Verify(
             d => d.UpdateTableAsync(It.IsAny<Table>(), It.IsAny<uint>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -97,14 +97,13 @@ public class UpdateTableCommandHandlerTests
         result!.Version.Should().Be(2u);
         table.Name.Should().Be("T13", because: "the handler must call UpdateDetails on the loaded aggregate before persisting.");
         _auditWriter.Verify(
-            a => a.WriteAsync(
-                It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Updated"),
-                It.IsAny<CancellationToken>()),
+            a => a.Stage(
+                It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Updated")),
             Times.Once);
     }
 
     [Fact]
-    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAndSkipsTheAuditWrite()
+    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAfterStagingTheEntry()
     {
         var table = ExistingTable();
         var command = ValidCommand(table, expectedVersion: 1);
@@ -122,11 +121,14 @@ public class UpdateTableCommandHandlerTests
         exception.Which.CurrentVersion.Should().Be(5u);
         exception.Which.EntityType.Should().Be("Table");
         exception.Which.EntityId.Should().Be(table.Id);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — nothing is ever actually flushed for this path.");
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var table = ExistingTable();
         var command = ValidCommand(table);
@@ -139,6 +141,10 @@ public class UpdateTableCommandHandlerTests
 
         await _sut.HandleAsync(command, CancellationToken.None);
 
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Domain;
@@ -8,7 +9,7 @@ namespace Mise.Modules.Tables.Application.CreateSection;
 
 public sealed partial class CreateSectionCommandHandler(
     ISectionsData sectionsData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IValidator<CreateSectionCommand> validator,
     TimeProvider timeProvider,
     ILogger<CreateSectionCommandHandler> logger)
@@ -19,6 +20,19 @@ public sealed partial class CreateSectionCommandHandler(
 
         var section = Section.Create(Guid.NewGuid(), command.Name, command.DisplayOrder);
 
+        // Staged before the gateway call, unconditionally — lands in the same SaveChangesAsync
+        // call as the insert (AuditCompletenessInterceptor, Phase 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Section",
+            EntityId = section.Id,
+            Action = "Created",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Section '{command.Name}'.",
+        });
+
         var result = await sectionsData.CreateSectionAsync(section, command.OperationId, cancellationToken);
 
         if (result.WasAlreadyProcessed)
@@ -27,18 +41,6 @@ public sealed partial class CreateSectionCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Section",
-                    EntityId = result.Section.Id,
-                    Action = "Created",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = $"Section '{command.Name}'.",
-                },
-                cancellationToken);
             LogSectionCreated(result.Section.Id);
         }
 

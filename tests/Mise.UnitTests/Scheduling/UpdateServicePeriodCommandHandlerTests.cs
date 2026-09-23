@@ -49,7 +49,7 @@ public class UpdateServicePeriodCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -68,14 +68,13 @@ public class UpdateServicePeriodCommandHandlerTests
         result.Should().NotBeNull();
         existing.Label.Should().Be("Brunch");
         _auditWriter.Verify(
-            a => a.WriteAsync(
-                It.Is<AuditLogEntry>(e => e.EntityType == "ServicePeriod" && e.EntityId == existing.Id && e.Action == "Updated"),
-                It.IsAny<CancellationToken>()),
+            a => a.Stage(
+                It.Is<AuditLogEntry>(e => e.EntityType == "ServicePeriod" && e.EntityId == existing.Id && e.Action == "Updated")),
             Times.Once);
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var existing = ServicePeriod.Create(
             Guid.NewGuid(), new DateOnly(2026, 9, 17), "Lunch", new TimeOnly(12, 0), new TimeOnly(14, 30), false, false);
@@ -88,6 +87,10 @@ public class UpdateServicePeriodCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().NotBeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

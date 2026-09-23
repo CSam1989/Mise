@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Application.Ports;
 using Mise.Modules.Reservations.Contracts;
@@ -18,7 +19,7 @@ namespace Mise.Modules.Reservations.Application.CancelReservation;
 /// </summary>
 public sealed partial class CancelReservationCommandHandler(
     IReservationsData reservationsData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Reservations)] IAuditWriter auditWriter,
     IDomainEventPublisher domainEventPublisher,
     IRealtimeNotifier realtimeNotifier,
     TimeProvider timeProvider,
@@ -34,6 +35,19 @@ public sealed partial class CancelReservationCommandHandler(
 
         var tableId = current.Reservation.TableId;
         current.Reservation.Cancel(timeProvider.GetUtcNow());
+
+        // Staged before the gateway call, unconditionally — see CreateReservationCommandHandler's
+        // doc comment on this same pattern (AuditCompletenessInterceptor, Phase 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Reservation",
+            EntityId = command.ReservationId,
+            Action = "Cancelled",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = string.Empty,
+        });
 
         var result = await reservationsData.CancelReservationAsync(
             current.Reservation, command.ExpectedVersion, command.OperationId, cancellationToken);
@@ -51,18 +65,6 @@ public sealed partial class CancelReservationCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Reservation",
-                    EntityId = command.ReservationId,
-                    Action = "Cancelled",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = string.Empty,
-                },
-                cancellationToken);
             LogReservationCancelled(command.ReservationId);
 
             await realtimeNotifier.NotifyReservationCancelledAsync(

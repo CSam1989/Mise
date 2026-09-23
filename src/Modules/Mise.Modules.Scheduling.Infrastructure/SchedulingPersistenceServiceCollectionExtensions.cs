@@ -18,10 +18,11 @@ public static class SchedulingPersistenceServiceCollectionExtensions
     {
         services.AddDbContext<SchedulingDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", "scheduling")));
+                    npgsql.MigrationsHistoryTable("__ef_migrations_history", "scheduling"))
+                .AddInterceptors(new AuditCompletenessInterceptor()));
 
         services.AddScoped<ISchedulingData, SchedulingData>();
-        services.AddScoped<IAuditWriter, AuditWriter<SchedulingDbContext>>();
+        services.AddKeyedScoped<IAuditWriter, AuditWriter<SchedulingDbContext>>(AuditWriterKeys.Scheduling);
 
         return services;
     }

@@ -17,6 +17,7 @@ using Mise.Modules.Reservations.Application.SeatReservation;
 using Mise.Modules.Reservations.Application.UpdateReservation;
 using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Reservations.Infrastructure;
+using Mise.Modules.Reservations.Infrastructure.Persistence;
 using Mise.Modules.Scheduling.Application.CreateServicePeriod;
 using Mise.Modules.Scheduling.Application.DeleteServicePeriod;
 using Mise.Modules.Scheduling.Application.UpdateServicePeriod;
@@ -37,6 +38,7 @@ using Mise.Modules.Tables.Application.UpdateTable;
 using Mise.Modules.Tables.Infrastructure;
 using Mise.ServiceDefaults;
 using Mise.SharedKernel.Infrastructure;
+using Mise.SharedKernel.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -135,6 +137,12 @@ var reservationsConnectionString = builder.Configuration.GetConnectionString("mi
     ?? throw new InvalidOperationException("Connection string 'misedb' is not configured.");
 builder.Services.AddReservationsPersistence(reservationsConnectionString);
 builder.Services.Configure<ReservationDefaultsOptions>(builder.Configuration.GetSection("Reservations"));
+
+// Phase 9 (ADR-009) — the audit-history read side (US-05 AC #2), registered once here rather
+// than per module like IAuditWriter: a read has no atomicity requirement tying it to any one
+// module's own DbContext, since every module's DbContext maps the identical physical
+// shared.audit_log_entry table. Backed by ReservationsDbContext, the table's migration owner.
+builder.Services.AddScoped<IAuditReader, AuditReader<ReservationsDbContext>>();
 builder.Services.AddScoped<CreateReservationCommandHandler>();
 builder.Services.AddScoped<IValidator<CreateReservationCommand>, CreateReservationCommandValidator>();
 builder.Services.AddScoped<UpdateReservationCommandHandler>();

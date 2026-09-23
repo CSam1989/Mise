@@ -28,9 +28,10 @@ public class MigrationHistoryTests(MiseApiFixture fixture)
         // shared table would show every module's combined migration count in each schema's
         // query alike. Bump the relevant number in the same commit as any module's next
         // migration (Phase 6 added Reservations' AddReservationDetailsAndConcurrency and
-        // Tables' AddTableGroups, taking both from 1 to 2).
-        reservationsMigrationCount.Should().Be(2,
-            because: "Reservations' own migrations-history table must exist and record exactly its own two migrations.");
+        // Tables' AddTableGroups, taking both from 1 to 2; Phase 9 added Reservations'
+        // AddAuditLogEntryEntityTypeEntityIdIndex, taking it from 2 to 3).
+        reservationsMigrationCount.Should().Be(3,
+            because: "Reservations' own migrations-history table must exist and record exactly its own three migrations.");
         staffIdentityMigrationCount.Should().Be(1,
             because: "StaffIdentity's own migrations-history table must exist, distinct from Reservations' — a shared table would make the second module's migration appear \"already applied\" via an id collision.");
         tablesMigrationCount.Should().Be(2,

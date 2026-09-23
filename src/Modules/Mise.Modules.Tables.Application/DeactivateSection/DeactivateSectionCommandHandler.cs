@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.SharedKernel.Infrastructure;
@@ -18,7 +19,7 @@ namespace Mise.Modules.Tables.Application.DeactivateSection;
 public sealed partial class DeactivateSectionCommandHandler(
     ISectionsData sectionsData,
     ITablesData tablesData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     TimeProvider timeProvider,
     ILogger<DeactivateSectionCommandHandler> logger)
 {
@@ -38,6 +39,19 @@ public sealed partial class DeactivateSectionCommandHandler(
 
         section.Deactivate();
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Section",
+            EntityId = command.SectionId,
+            Action = "Deactivated",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = string.Empty,
+        });
+
         var result = await sectionsData.DeactivateSectionAsync(section, command.OperationId, cancellationToken);
 
         if (result.WasAlreadyProcessed)
@@ -46,18 +60,6 @@ public sealed partial class DeactivateSectionCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Section",
-                    EntityId = command.SectionId,
-                    Action = "Deactivated",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = string.Empty,
-                },
-                cancellationToken);
             LogSectionDeactivated(command.SectionId);
         }
 

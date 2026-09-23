@@ -19,11 +19,12 @@ public static class ReservationsPersistenceServiceCollectionExtensions
     {
         services.AddDbContext<ReservationsDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", "reservations")));
+                    npgsql.MigrationsHistoryTable("__ef_migrations_history", "reservations"))
+                .AddInterceptors(new AuditCompletenessInterceptor()));
 
         services.AddScoped<IReservationsData, ReservationsData>();
         services.AddScoped<IReservationLookup, ReservationLookup>();
-        services.AddScoped<IAuditWriter, AuditWriter<ReservationsDbContext>>();
+        services.AddKeyedScoped<IAuditWriter, AuditWriter<ReservationsDbContext>>(AuditWriterKeys.Reservations);
 
         return services;
     }

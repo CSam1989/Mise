@@ -11,7 +11,7 @@ namespace Mise.Modules.Reservations.Domain;
 /// <see cref="MarkSeated"/> (FR-05/BR-04) and <see cref="MarkNoShow"/> (BR-05) —
 /// <see cref="ReservationStatus.Completed"/> stays unreachable; no command drives it yet.
 /// </summary>
-public sealed class Reservation : AggregateRoot<Guid>
+public sealed class Reservation : AggregateRoot<Guid>, IAuditableEntity
 {
     private Reservation(
         Guid id, string customerName, string customerPhone, string? customerEmail, int partySize,

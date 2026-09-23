@@ -52,7 +52,7 @@ public class ChangeTableStatusCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -71,9 +71,8 @@ public class ChangeTableStatusCommandHandlerTests
         result.Should().NotBeNull();
         table.Status.Should().Be(TableStatus.NeedsCleaning, because: "the handler must call SetStatus on the loaded aggregate before persisting.");
         _auditWriter.Verify(
-            a => a.WriteAsync(
-                It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "StatusChanged" && e.Details == "NeedsCleaning"),
-                It.IsAny<CancellationToken>()),
+            a => a.Stage(
+                It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "StatusChanged" && e.Details == "NeedsCleaning")),
             Times.Once);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(
@@ -82,7 +81,7 @@ public class ChangeTableStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAndSkipsTheAuditWrite()
+    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAfterStagingTheEntry()
     {
         var table = ExistingTable();
         var command = CommandFor(table);
@@ -96,13 +95,16 @@ public class ChangeTableStatusCommandHandlerTests
 
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — nothing is ever actually flushed for this path.");
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var table = ExistingTable();
         var command = CommandFor(table);
@@ -114,7 +116,11 @@ public class ChangeTableStatusCommandHandlerTests
 
         await _sut.HandleAsync(command, CancellationToken.None);
 
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }

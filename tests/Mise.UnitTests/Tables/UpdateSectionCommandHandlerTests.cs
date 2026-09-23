@@ -34,7 +34,7 @@ public class UpdateSectionCommandHandlerTests
 
         await act.Should().ThrowAsync<ValidationException>();
         _sectionsData.Verify(d => d.GetSectionByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class UpdateSectionCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -65,14 +65,13 @@ public class UpdateSectionCommandHandlerTests
         result.Should().NotBeNull();
         section.Name.Should().Be("Main Room", because: "the handler must call UpdateDetails on the loaded aggregate before persisting.");
         _auditWriter.Verify(
-            a => a.WriteAsync(
-                It.Is<AuditLogEntry>(e => e.EntityType == "Section" && e.EntityId == section.Id && e.Action == "Updated"),
-                It.IsAny<CancellationToken>()),
+            a => a.Stage(
+                It.Is<AuditLogEntry>(e => e.EntityType == "Section" && e.EntityId == section.Id && e.Action == "Updated")),
             Times.Once);
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var section = Section.Create(Guid.NewGuid(), "Patio", 0);
         var command = ValidCommand(section.Id);
@@ -83,6 +82,10 @@ public class UpdateSectionCommandHandlerTests
 
         await _sut.HandleAsync(command, CancellationToken.None);
 
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

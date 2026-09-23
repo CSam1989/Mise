@@ -8,6 +8,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mise.ServiceDefaults\Mise.ServiceDefaults.csproj" />
+    <!-- Referenced explicitly since Program.cs names AuditReader<ReservationsDbContext> directly
+         to register IAuditReader (Phase 9/ADR-009) — same CPM philosophy as the Domain references
+         below: don't rely on an undeclared transitive dependency for something referenced by name. -->
+    <ProjectReference Include="..\Mise.SharedKernel.Persistence\Mise.SharedKernel.Persistence.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Application\Mise.Modules.Reservations.Application.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Contracts\Mise.Modules.Reservations.Contracts.csproj" />
     <ProjectReference Include="..\Modules\Mise.Modules.Reservations.Infrastructure\Mise.Modules.Reservations.Infrastructure.csproj" />

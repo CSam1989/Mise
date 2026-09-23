@@ -19,7 +19,7 @@ namespace Mise.Modules.Tables.Domain;
 /// event is redispatched on a client's OperationId replay and the table already reflects the
 /// intended state.
 /// </summary>
-public sealed class Table : AggregateRoot<Guid>
+public sealed class Table : AggregateRoot<Guid>, IAuditableEntity
 {
     private Table(
         Guid id, Guid sectionId, string name, int minCapacity, int maxCapacity, bool isCombinable,

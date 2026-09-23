@@ -24,6 +24,7 @@ builder.AddServiceDefaults();
 var connectionString = builder.Configuration.GetConnectionString("misedb")
     ?? throw new InvalidOperationException("Connection string 'misedb' is not configured.");
 
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddReservationsPersistence(connectionString);
 builder.Services.AddStaffIdentityPersistence(connectionString);
 builder.Services.AddTablesPersistence(connectionString);

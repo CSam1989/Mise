@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Domain;
@@ -10,7 +11,7 @@ namespace Mise.Modules.Tables.Application.CreateTable;
 public sealed partial class CreateTableCommandHandler(
     ITablesData tablesData,
     ISectionsData sectionsData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IValidator<CreateTableCommand> validator,
     TimeProvider timeProvider,
     ILogger<CreateTableCommandHandler> logger)
@@ -38,6 +39,19 @@ public sealed partial class CreateTableCommandHandler(
             Guid.NewGuid(), command.SectionId, command.Name, command.MinCapacity, command.MaxCapacity,
             command.IsCombinable, command.PositionX, command.PositionY);
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Table",
+            EntityId = table.Id,
+            Action = "Created",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Table '{command.Name}' in section {command.SectionId}.",
+        });
+
         var result = await tablesData.CreateTableAsync(table, command.OperationId, cancellationToken);
 
         if (result.WasAlreadyProcessed)
@@ -46,18 +60,6 @@ public sealed partial class CreateTableCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Table",
-                    EntityId = result.TableId,
-                    Action = "Created",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = $"Table '{command.Name}' in section {command.SectionId}.",
-                },
-                cancellationToken);
             LogTableCreated(result.TableId);
         }
 

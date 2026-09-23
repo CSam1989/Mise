@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Domain;
@@ -15,7 +16,7 @@ namespace Mise.Modules.Tables.Application.DeactivateTable;
 /// </summary>
 public sealed partial class DeactivateTableCommandHandler(
     ITablesData tablesData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     TimeProvider timeProvider,
     ILogger<DeactivateTableCommandHandler> logger)
 {
@@ -28,6 +29,19 @@ public sealed partial class DeactivateTableCommandHandler(
         }
 
         current.Table.Deactivate();
+
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Table",
+            EntityId = command.TableId,
+            Action = "Deactivated",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = string.Empty,
+        });
 
         var result = await tablesData.DeactivateTableAsync(
             current.Table, command.ExpectedVersion, command.OperationId, cancellationToken);
@@ -45,18 +59,6 @@ public sealed partial class DeactivateTableCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Table",
-                    EntityId = command.TableId,
-                    Action = "Deactivated",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = string.Empty,
-                },
-                cancellationToken);
             LogTableDeactivated(command.TableId);
         }
 

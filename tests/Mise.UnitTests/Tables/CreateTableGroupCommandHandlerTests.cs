@@ -118,7 +118,7 @@ public class CreateTableGroupCommandHandlerTests
 
         result.TableGroupId.Should().Be(groupId);
         _auditWriter.Verify(
-            a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "TableGroup" && e.Action == "Created"), It.IsAny<CancellationToken>()),
+            a => a.Stage(It.Is<AuditLogEntry>(e => e.EntityType == "TableGroup" && e.Action == "Created")),
             Times.Once);
     }
 
@@ -146,6 +146,11 @@ public class CreateTableGroupCommandHandlerTests
             d => d.GetTableIdsAlreadyInAnActiveGroupAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
         _tableGroupsData.Verify(
             d => d.CreateTableGroupAsync(It.IsAny<TableGroup>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Never,
+            "unlike every other handler, this idempotency check runs before TableGroup.Create/Stage are ever " +
+            "reached (the whole point of checking it first — see the handler's own doc comment), so Stage is " +
+            "never even called on this path, not just never flushed.");
     }
 }

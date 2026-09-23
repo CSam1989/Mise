@@ -41,7 +41,7 @@ public class CreateTableCommandHandlerTests
         await act.Should().ThrowAsync<ValidationException>();
         _tablesData.Verify(
             d => d.CreateTableAsync(It.IsAny<Table>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class CreateTableCommandHandlerTests
         exception.Which.Errors.Should().ContainSingle(e => e.PropertyName == nameof(CreateTableCommand.SectionId));
         _tablesData.Verify(
             d => d.CreateTableAsync(It.IsAny<Table>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -66,8 +66,10 @@ public class CreateTableCommandHandlerTests
         var command = ValidCommand();
         SectionExists(command.SectionId);
         var tableId = Guid.NewGuid();
+        Table? passedTable = null;
         _tablesData
             .Setup(d => d.CreateTableAsync(It.IsAny<Table>(), command.OperationId, It.IsAny<CancellationToken>()))
+            .Callback<Table, Guid, CancellationToken>((t, _, _) => passedTable = t)
             .ReturnsAsync(new TableCreateResult(tableId, Version: 1, WasAlreadyProcessed: false));
 
         var result = await _sut.HandleAsync(command, CancellationToken.None);
@@ -80,16 +82,17 @@ public class CreateTableCommandHandlerTests
                 command.OperationId, It.IsAny<CancellationToken>()),
             Times.Once);
         _auditWriter.Verify(
-            a => a.WriteAsync(
+            a => a.Stage(
                 It.Is<AuditLogEntry>(e =>
-                    e.EntityType == "Table" && e.EntityId == tableId && e.Action == "Created"
-                    && e.PerformedByStaffId == command.PerformedByStaffId && e.OccurredAtUtc == _timeProvider.GetUtcNow()),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+                    e.EntityType == "Table" && e.EntityId == passedTable!.Id && e.Action == "Created"
+                    && e.PerformedByStaffId == command.PerformedByStaffId && e.OccurredAtUtc == _timeProvider.GetUtcNow())),
+            Times.Once,
+            "EntityId is the handler's own client-generated Table.Id, staged before the gateway call — not the " +
+            "mocked gateway result's (unrelated) tableId.");
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingResultAndSkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingResultAndStagesAuditEntryRegardless()
     {
         var command = ValidCommand();
         SectionExists(command.SectionId);
@@ -101,6 +104,10 @@ public class CreateTableCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.TableId.Should().Be(existingTableId);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

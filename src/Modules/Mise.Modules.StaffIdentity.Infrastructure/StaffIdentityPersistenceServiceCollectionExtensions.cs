@@ -20,7 +20,8 @@ public static class StaffIdentityPersistenceServiceCollectionExtensions
     {
         services.AddDbContext<StaffIdentityDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", "staff_identity")));
+                    npgsql.MigrationsHistoryTable("__ef_migrations_history", "staff_identity"))
+                .AddInterceptors(new AuditCompletenessInterceptor()));
 
         services.AddIdentityCore<StaffIdentityUser>(options =>
             {
@@ -40,7 +41,7 @@ public static class StaffIdentityPersistenceServiceCollectionExtensions
             .AddEntityFrameworkStores<StaffIdentityDbContext>();
 
         services.AddScoped<IStaffIdentityData, StaffIdentityData>();
-        services.AddScoped<IAuditWriter, AuditWriter<StaffIdentityDbContext>>();
+        services.AddKeyedScoped<IAuditWriter, AuditWriter<StaffIdentityDbContext>>(AuditWriterKeys.StaffIdentity);
         services.AddScoped<StaffIdentitySeeder>();
 
         return services;

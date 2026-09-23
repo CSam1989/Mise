@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Domain;
@@ -18,7 +19,7 @@ namespace Mise.Modules.Tables.Application.UpdateTable;
 public sealed partial class UpdateTableCommandHandler(
     ITablesData tablesData,
     ISectionsData sectionsData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IValidator<UpdateTableCommand> validator,
     TimeProvider timeProvider,
     ILogger<UpdateTableCommandHandler> logger)
@@ -45,6 +46,19 @@ public sealed partial class UpdateTableCommandHandler(
             command.SectionId, command.Name, command.MinCapacity, command.MaxCapacity,
             command.IsCombinable, command.PositionX, command.PositionY);
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Table",
+            EntityId = command.TableId,
+            Action = "Updated",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Table '{command.Name}'.",
+        });
+
         var result = await tablesData.UpdateTableAsync(
             current.Table, command.ExpectedVersion, command.OperationId, cancellationToken);
 
@@ -61,18 +75,6 @@ public sealed partial class UpdateTableCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Table",
-                    EntityId = command.TableId,
-                    Action = "Updated",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = $"Table '{command.Name}'.",
-                },
-                cancellationToken);
             LogTableUpdated(command.TableId);
         }
 

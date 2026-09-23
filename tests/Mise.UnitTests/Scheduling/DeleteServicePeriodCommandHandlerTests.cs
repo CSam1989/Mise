@@ -23,7 +23,7 @@ public class DeleteServicePeriodCommandHandlerTests
     private static DeleteServicePeriodCommand CommandFor(Guid servicePeriodId) => new(Guid.NewGuid(), servicePeriodId, Guid.NewGuid());
 
     [Fact]
-    public async Task HandleAsync_ServicePeriodDoesNotExist_ReturnsNullAndSkipsTheAuditWrite()
+    public async Task HandleAsync_ServicePeriodDoesNotExist_ReturnsNullButStillStagesAuditEntry()
     {
         var command = CommandFor(Guid.NewGuid());
         _schedulingData
@@ -33,7 +33,12 @@ public class DeleteServicePeriodCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "unlike Create/Update, Delete has no domain object to build first, so Stage is called unconditionally " +
+            "before the ONE gateway call that also determines not-found/replay — nothing is ever actually flushed " +
+            "for this path since the gateway's own SaveChangesAsync is never reached.");
     }
 
     [Fact]
@@ -48,15 +53,14 @@ public class DeleteServicePeriodCommandHandlerTests
 
         result.Should().BeTrue();
         _auditWriter.Verify(
-            a => a.WriteAsync(
+            a => a.Stage(
                 It.Is<AuditLogEntry>(e =>
-                    e.EntityType == "ServicePeriod" && e.EntityId == command.ServicePeriodId && e.Action == "Deleted"),
-                It.IsAny<CancellationToken>()),
+                    e.EntityType == "ServicePeriod" && e.EntityId == command.ServicePeriodId && e.Action == "Deleted")),
             Times.Once);
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsTrueAndSkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsTrueAndStagesAuditEntryRegardless()
     {
         var command = CommandFor(Guid.NewGuid());
         _schedulingData
@@ -67,6 +71,10 @@ public class DeleteServicePeriodCommandHandlerTests
 
         result.Should().BeTrue(
             because: "a replayed delete of an already-deleted row must still answer 204, not 404 (OperationId idempotency).");
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the single gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

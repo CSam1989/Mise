@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Domain;
@@ -18,7 +19,7 @@ namespace Mise.Modules.Tables.Application.ChangeTableStatus;
 /// </summary>
 public sealed partial class ChangeTableStatusCommandHandler(
     ITablesData tablesData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IRealtimeNotifier realtimeNotifier,
     IValidator<ChangeTableStatusCommand> validator,
     TimeProvider timeProvider,
@@ -37,6 +38,19 @@ public sealed partial class ChangeTableStatusCommandHandler(
         var newStatus = Enum.Parse<TableStatus>(command.Status);
         current.Table.SetStatus(newStatus);
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Table",
+            EntityId = command.TableId,
+            Action = "StatusChanged",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = newStatus.ToString(),
+        });
+
         var result = await tablesData.ChangeTableStatusAsync(
             current.Table, command.ExpectedVersion, command.OperationId, cancellationToken);
 
@@ -53,18 +67,6 @@ public sealed partial class ChangeTableStatusCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Table",
-                    EntityId = command.TableId,
-                    Action = "StatusChanged",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = newStatus.ToString(),
-                },
-                cancellationToken);
             LogTableStatusChanged(command.TableId, newStatus);
 
             await realtimeNotifier.NotifyTableStatusChangedAsync(

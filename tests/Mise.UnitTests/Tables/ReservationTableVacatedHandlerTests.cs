@@ -56,7 +56,7 @@ public class ReservationTableVacatedHandlerTests
 
         table.Status.Should().Be(TableStatus.Available);
         _auditWriter.Verify(
-            a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Released"), It.IsAny<CancellationToken>()),
+            a => a.Stage(It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Released")),
             Times.Once);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(
@@ -77,7 +77,7 @@ public class ReservationTableVacatedHandlerTests
         table.Status.Should().Be(TableStatus.Occupied, because: "BR-05's 'unless another active reservation holds it' clause.");
         _tablesData.Verify(
             d => d.ChangeTableStatusAsync(It.IsAny<Table>(), It.IsAny<uint>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -111,13 +111,13 @@ public class ReservationTableVacatedHandlerTests
         var act = () => _sut.HandleAsync(domainEvent, CancellationToken.None);
 
         await act.Should().NotThrowAsync();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_GatewayReportsVersionMismatch_ThrowsConcurrencyConflictException()
+    public async Task HandleAsync_GatewayReportsVersionMismatch_ThrowsConcurrencyConflictExceptionAfterStagingTheEntry()
     {
         var table = ExistingTable(TableStatus.Occupied);
         var domainEvent = EventFor(table.Id);
@@ -130,7 +130,10 @@ public class ReservationTableVacatedHandlerTests
         var act = () => _sut.HandleAsync(domainEvent, CancellationToken.None);
 
         await act.Should().ThrowAsync<ConcurrencyConflictException>();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — nothing is ever actually flushed for this path.");
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }

@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.SharedKernel.Infrastructure;
@@ -11,7 +12,7 @@ namespace Mise.Modules.Tables.Application.UpdateSection;
 /// new exception type being introduced for a single caller.</summary>
 public sealed partial class UpdateSectionCommandHandler(
     ISectionsData sectionsData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IValidator<UpdateSectionCommand> validator,
     TimeProvider timeProvider,
     ILogger<UpdateSectionCommandHandler> logger)
@@ -28,6 +29,19 @@ public sealed partial class UpdateSectionCommandHandler(
 
         section.UpdateDetails(command.Name, command.DisplayOrder);
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Section",
+            EntityId = command.SectionId,
+            Action = "Updated",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Section '{command.Name}'.",
+        });
+
         var result = await sectionsData.UpdateSectionAsync(section, command.OperationId, cancellationToken);
 
         if (result.WasAlreadyProcessed)
@@ -36,18 +50,6 @@ public sealed partial class UpdateSectionCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Section",
-                    EntityId = command.SectionId,
-                    Action = "Updated",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = $"Section '{command.Name}'.",
-                },
-                cancellationToken);
             LogSectionUpdated(command.SectionId);
         }
 

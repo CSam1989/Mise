@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Application.Ports;
 using Mise.Modules.Reservations.Contracts;
@@ -24,7 +25,7 @@ namespace Mise.Modules.Reservations.Application.SeatReservation;
 public sealed partial class SeatReservationCommandHandler(
     IReservationsData reservationsData,
     ITableAvailabilityLookup tableAvailabilityLookup,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Reservations)] IAuditWriter auditWriter,
     IDomainEventPublisher domainEventPublisher,
     IRealtimeNotifier realtimeNotifier,
     IValidator<SeatReservationCommand> validator,
@@ -45,6 +46,19 @@ public sealed partial class SeatReservationCommandHandler(
             command.TableId, current.Reservation.PartySize, tableAvailabilityLookup, cancellationToken);
 
         current.Reservation.MarkSeated(command.TableId, timeProvider.GetUtcNow());
+
+        // Staged before the gateway call, unconditionally — see CreateReservationCommandHandler's
+        // doc comment on this same pattern (AuditCompletenessInterceptor, Phase 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Reservation",
+            EntityId = command.ReservationId,
+            Action = "Seated",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = string.Empty,
+        });
 
         var result = await reservationsData.UpdateReservationAsync(
             current.Reservation, command.ExpectedVersion, command.OperationId, cancellationToken);
@@ -68,18 +82,6 @@ public sealed partial class SeatReservationCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "Reservation",
-                    EntityId = command.ReservationId,
-                    Action = "Seated",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = string.Empty,
-                },
-                cancellationToken);
             LogReservationSeated(command.ReservationId, command.TableId);
 
             // ADR-008: Seat is a status transition, not a distinct wire event — it notifies as

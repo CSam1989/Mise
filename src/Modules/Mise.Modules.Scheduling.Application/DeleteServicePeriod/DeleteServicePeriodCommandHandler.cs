@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Scheduling.Application.Ports;
 using Mise.SharedKernel.Infrastructure;
@@ -16,12 +17,28 @@ namespace Mise.Modules.Scheduling.Application.DeleteServicePeriod;
 /// </summary>
 public sealed partial class DeleteServicePeriodCommandHandler(
     ISchedulingData schedulingData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Scheduling)] IAuditWriter auditWriter,
     TimeProvider timeProvider,
     ILogger<DeleteServicePeriodCommandHandler> logger)
 {
     public async Task<bool?> HandleAsync(DeleteServicePeriodCommand command, CancellationToken cancellationToken)
     {
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009). On a not-found or a replayed OperationId, DeleteServicePeriodAsync never
+        // reaches its own SaveChangesAsync (see its own remarks on checking OperationId before
+        // the existence check for a hard delete), so this staged-but-unflushed entry is simply
+        // discarded with the DbContext, same as every other handler's early-return paths.
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "ServicePeriod",
+            EntityId = command.ServicePeriodId,
+            Action = "Deleted",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = string.Empty,
+        });
+
         var result = await schedulingData.DeleteServicePeriodAsync(command.ServicePeriodId, command.OperationId, cancellationToken);
         if (!result.Existed)
         {
@@ -34,18 +51,6 @@ public sealed partial class DeleteServicePeriodCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "ServicePeriod",
-                    EntityId = command.ServicePeriodId,
-                    Action = "Deleted",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = string.Empty,
-                },
-                cancellationToken);
             LogServicePeriodDeleted(command.ServicePeriodId);
         }
 

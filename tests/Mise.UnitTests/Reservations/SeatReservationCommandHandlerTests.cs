@@ -67,7 +67,7 @@ public class SeatReservationCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
         _domainEventPublisher.Verify(p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Never);
         _realtimeNotifier.Verify(
             n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -130,7 +130,7 @@ public class SeatReservationCommandHandlerTests
         reservation.Status.Should().Be(ReservationStatus.Seated, because: "the handler must call MarkSeated on the loaded aggregate before persisting.");
         reservation.TableId.Should().Be(tableId);
         _auditWriter.Verify(
-            a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Seated"), It.IsAny<CancellationToken>()),
+            a => a.Stage(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Seated")),
             Times.Once);
         _domainEventPublisher.Verify(
             p => p.PublishAsync(
@@ -146,7 +146,7 @@ public class SeatReservationCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAndSkipsTheAuditWriteAndEvent()
+    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAndSkipsTheEvent()
     {
         var reservation = ExistingReservation();
         var tableId = Guid.NewGuid();
@@ -162,7 +162,11 @@ public class SeatReservationCommandHandlerTests
 
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — see UpdateReservationCommandHandlerTests' identical case for " +
+            "the full rationale (nothing is ever actually flushed for this path).");
         _domainEventPublisher.Verify(p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Never);
         _realtimeNotifier.Verify(
             n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -191,7 +195,7 @@ public class SeatReservationCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWriteButStillPublishesReservationSeated()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButStillPublishesReservationSeated()
     {
         var reservation = ExistingReservation();
         var tableId = Guid.NewGuid();
@@ -205,7 +209,11 @@ public class SeatReservationCommandHandlerTests
 
         await _sut.HandleAsync(command, CancellationToken.None);
 
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
         _domainEventPublisher.Verify(
             p => p.PublishAsync(It.IsAny<ReservationSeated>(), It.IsAny<CancellationToken>()), Times.Once,
             "unlike the audit write, the event is redispatched on replay so a failed cross-module side effect from the first attempt can self-heal.");

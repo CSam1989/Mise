@@ -19,13 +19,14 @@ public static class TablesPersistenceServiceCollectionExtensions
     {
         services.AddDbContext<TablesDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", "tables")));
+                    npgsql.MigrationsHistoryTable("__ef_migrations_history", "tables"))
+                .AddInterceptors(new AuditCompletenessInterceptor()));
 
         services.AddScoped<ISectionsData, SectionsData>();
         services.AddScoped<ITablesData, TablesData>();
         services.AddScoped<ITableGroupsData, TableGroupsData>();
         services.AddScoped<ITableAvailabilityLookup, TableAvailabilityLookup>();
-        services.AddScoped<IAuditWriter, AuditWriter<TablesDbContext>>();
+        services.AddKeyedScoped<IAuditWriter, AuditWriter<TablesDbContext>>(AuditWriterKeys.Tables);
 
         // ADR-007's cross-module event handlers (ReservationSeatedTableOccupiedHandler /
         // ReservationTableVacatedHandler) are deliberately NOT registered here: this extension

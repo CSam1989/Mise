@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.StaffIdentity.Application.Ports;
 using Mise.Modules.StaffIdentity.Domain;
@@ -16,7 +17,7 @@ namespace Mise.Modules.StaffIdentity.Application.RegisterStaff;
 /// </summary>
 public sealed partial class RegisterStaffCommandHandler(
     IStaffIdentityData staffIdentityData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.StaffIdentity)] IAuditWriter auditWriter,
     IValidator<RegisterStaffCommand> validator,
     TimeProvider timeProvider,
     ILogger<RegisterStaffCommandHandler> logger)
@@ -26,6 +27,21 @@ public sealed partial class RegisterStaffCommandHandler(
         await validator.ValidateAndThrowAsync(command, cancellationToken);
 
         var staffUser = StaffUser.Create(Guid.NewGuid(), command.FullName, command.Role);
+
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009). On UsernameTaken or an idempotent replay, RegisterStaffAsync never reaches
+        // its own SaveChangesAsync (see StaffIdentityData's remarks on AutoSaveChanges=false), so
+        // this staged-but-unflushed entry is simply discarded with the DbContext.
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "StaffUser",
+            EntityId = staffUser.Id,
+            Action = "Created",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Role {command.Role}.",
+        });
 
         var result = await staffIdentityData.RegisterStaffAsync(
             staffUser, command.Username, command.Password, command.OperationId, cancellationToken);
@@ -42,18 +58,6 @@ public sealed partial class RegisterStaffCommandHandler(
                 return result.StaffUserId;
 
             default:
-                await auditWriter.WriteAsync(
-                    new AuditLogEntry
-                    {
-                        Id = Guid.NewGuid(),
-                        EntityType = "StaffUser",
-                        EntityId = result.StaffUserId,
-                        Action = "Created",
-                        PerformedByStaffId = command.PerformedByStaffId,
-                        OccurredAtUtc = timeProvider.GetUtcNow(),
-                        Details = $"Role {command.Role}.",
-                    },
-                    cancellationToken);
                 LogStaffRegistered(result.StaffUserId, command.Role);
                 return result.StaffUserId;
         }

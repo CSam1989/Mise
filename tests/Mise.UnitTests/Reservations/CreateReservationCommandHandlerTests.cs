@@ -54,7 +54,7 @@ public class CreateReservationCommandHandlerTests
         _reservationsData.Verify(
             d => d.CreateReservationAsync(It.IsAny<Reservation>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -80,13 +80,12 @@ public class CreateReservationCommandHandlerTests
             Times.Once,
             "a null DurationMinutes must fall back to ReservationDefaultsOptions.DefaultDurationMinutes (90).");
         _auditWriter.Verify(
-            a => a.WriteAsync(
+            a => a.Stage(
                 It.Is<AuditLogEntry>(e =>
                     e.EntityId == result.Reservation.Id
                     && e.Action == "Created"
                     && e.PerformedByStaffId == command.PerformedByStaffId
-                    && e.OccurredAtUtc == _timeProvider.GetUtcNow()),
-                It.IsAny<CancellationToken>()),
+                    && e.OccurredAtUtc == _timeProvider.GetUtcNow())),
             Times.Once,
             "the audit entry's timestamp must come from the injected TimeProvider, never the wall clock.");
         _realtimeNotifier.Verify(
@@ -112,7 +111,7 @@ public class CreateReservationCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var command = ValidCommand();
         var existing = Reservation.Create(
@@ -127,9 +126,12 @@ public class CreateReservationCommandHandlerTests
         result.Reservation.Id.Should().Be(existing.Id,
             because: "a replayed OperationId returns the reservation it originally created (docs/plan.md's OperationId replay contract).");
         _auditWriter.Verify(
-            a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()),
-            Times.Never,
-            "replaying an already-processed operation must not write a second audit entry for the same effect.");
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call (Phase 9/ADR-009's stage-before-mutate design) — " +
+            "the actual 'no second audit row' guarantee is structural, not something this mocked-gateway unit test can " +
+            "observe: the real gateway's own SaveChangesAsync is never reached on a replay, so the staged-but-unflushed " +
+            "entry is discarded with the DbContext (proven at the integration tier instead).");
         _realtimeNotifier.Verify(
             n => n.NotifyReservationCreatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()),
             Times.Never,
@@ -225,7 +227,11 @@ public class CreateReservationCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ReservationOverlapException>(
             because: "docs/plan.md correction #1 — BR-01 surfaces as a clean 409 via this exception, never a raw constraint error.");
         exception.Which.TableId.Should().Be(tableId);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call, so it still fires even though the gateway's own overlap check " +
+            "(reported via its return value here) rejects the mutation — nothing is ever flushed for this path.");
         _realtimeNotifier.Verify(
             n => n.NotifyReservationCreatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }

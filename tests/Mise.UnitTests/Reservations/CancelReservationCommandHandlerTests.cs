@@ -45,7 +45,7 @@ public class CancelReservationCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class CancelReservationCommandHandlerTests
         reservation.Status.Should().Be(ReservationStatus.Cancelled,
             because: "the handler must call Cancel on the loaded aggregate before persisting.");
         _auditWriter.Verify(
-            a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Cancelled"), It.IsAny<CancellationToken>()),
+            a => a.Stage(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Cancelled")),
             Times.Once);
         _realtimeNotifier.Verify(
             n => n.NotifyReservationCancelledAsync(
@@ -74,7 +74,7 @@ public class CancelReservationCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAndSkipsTheAuditWrite()
+    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAfterStagingTheEntry()
     {
         var reservation = ExistingReservation();
         var command = CommandFor(reservation);
@@ -88,13 +88,17 @@ public class CancelReservationCommandHandlerTests
 
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — see UpdateReservationCommandHandlerTests' identical case for " +
+            "the full rationale (nothing is ever actually flushed for this path).");
         _realtimeNotifier.Verify(
             n => n.NotifyReservationCancelledAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var reservation = ExistingReservation();
         var command = CommandFor(reservation);
@@ -106,7 +110,11 @@ public class CancelReservationCommandHandlerTests
 
         await _sut.HandleAsync(command, CancellationToken.None);
 
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
         _realtimeNotifier.Verify(
             n => n.NotifyReservationCancelledAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()),
             Times.Never,

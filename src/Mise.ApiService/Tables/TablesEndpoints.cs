@@ -6,6 +6,7 @@ using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Application.UpdateTable;
 using Mise.Modules.Tables.Contracts;
 using Mise.Modules.Tables.Domain;
+using Mise.SharedKernel.Infrastructure;
 
 namespace Mise.ApiService.Tables;
 
@@ -28,6 +29,7 @@ internal static class TablesEndpoints
         app.MapPatch("/api/tables/{id:guid}", UpdateTableAsync).RequireAuthorization("Manager");
         app.MapPatch("/api/tables/{id:guid}/deactivate", DeactivateTableAsync).RequireAuthorization("Manager");
         app.MapPatch("/api/tables/{id:guid}/status", ChangeTableStatusAsync).RequireAuthorization("FloorStaff");
+        app.MapGet("/api/tables/{id:guid}/audit-history", GetAuditHistoryAsync).RequireAuthorization("Manager");
         return app;
     }
 
@@ -139,6 +141,17 @@ internal static class TablesEndpoints
         httpContext.Response.Headers.ETag = ETag.Format(result.Version);
         return Results.Ok(ToDto(new TableWithVersion(result.Table, result.Version)));
     }
+
+    /// <summary>US-05 AC #2 — Manager-only, same reasoning as
+    /// ReservationsEndpoints.GetAuditHistoryAsync's own doc comment.</summary>
+    private static async Task<IResult> GetAuditHistoryAsync(Guid id, IAuditReader auditReader, CancellationToken cancellationToken)
+    {
+        var history = await auditReader.GetHistoryAsync("Table", id, cancellationToken);
+        return Results.Ok(history.Select(ToAuditHistoryEntryDto).ToArray());
+    }
+
+    private static AuditHistoryEntryDto ToAuditHistoryEntryDto(AuditLogEntry entry) => new(
+        entry.Id, entry.Action, entry.PerformedByStaffId, entry.PerformedBySystemProcess, entry.OccurredAtUtc, entry.Details);
 
     private static TableDto ToDto(TableWithVersion tableWithVersion)
     {

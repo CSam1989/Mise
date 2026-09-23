@@ -7,6 +7,7 @@ using Mise.Modules.Reservations.Application.SeatReservation;
 using Mise.Modules.Reservations.Application.UpdateReservation;
 using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Reservations.Domain;
+using Mise.SharedKernel.Infrastructure;
 
 namespace Mise.ApiService.Reservations;
 
@@ -27,6 +28,7 @@ internal static class ReservationsEndpoints
         app.MapPatch("/api/reservations/{id:guid}/cancel", CancelReservationAsync).RequireAuthorization("FloorStaff");
         app.MapPatch("/api/reservations/{id:guid}/seat", SeatReservationAsync).RequireAuthorization("FloorStaff");
         app.MapPatch("/api/reservations/{id:guid}/no-show", MarkReservationNoShowAsync).RequireAuthorization("FloorStaff");
+        app.MapGet("/api/reservations/{id:guid}/audit-history", GetAuditHistoryAsync).RequireAuthorization("Manager");
         return app;
     }
 
@@ -165,6 +167,20 @@ internal static class ReservationsEndpoints
         httpContext.Response.Headers.ETag = ETag.Format(result.Version);
         return Results.Ok(ToDto(result.Reservation, result.Version));
     }
+
+    /// <summary>US-05 AC #2 — Manager-only, same reasoning as
+    /// ServicePeriodsEndpoints.DeleteServicePeriodAsync's own doc comment gives for a plain read
+    /// with no query-handler class. Empty history (never-audited or non-existent id) returns 200
+    /// with <c>[]</c>, not 404 — this endpoint doesn't know or care whether the reservation itself
+    /// still exists, only whether it has history.</summary>
+    private static async Task<IResult> GetAuditHistoryAsync(Guid id, IAuditReader auditReader, CancellationToken cancellationToken)
+    {
+        var history = await auditReader.GetHistoryAsync("Reservation", id, cancellationToken);
+        return Results.Ok(history.Select(ToAuditHistoryEntryDto).ToArray());
+    }
+
+    private static AuditHistoryEntryDto ToAuditHistoryEntryDto(AuditLogEntry entry) => new(
+        entry.Id, entry.Action, entry.PerformedByStaffId, entry.PerformedBySystemProcess, entry.OccurredAtUtc, entry.Details);
 
     private static ReservationDto ToDto(Reservation reservation, uint version) => new(
         reservation.Id, reservation.CustomerName, reservation.CustomerPhone, reservation.CustomerEmail,

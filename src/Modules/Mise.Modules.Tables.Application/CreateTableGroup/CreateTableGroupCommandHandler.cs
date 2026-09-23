@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Tables.Application.Ports;
 using Mise.Modules.Tables.Domain;
@@ -22,7 +23,7 @@ namespace Mise.Modules.Tables.Application.CreateTableGroup;
 public sealed partial class CreateTableGroupCommandHandler(
     ITableGroupsData tableGroupsData,
     ITablesData tablesData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IValidator<CreateTableGroupCommand> validator,
     TimeProvider timeProvider,
     ILogger<CreateTableGroupCommandHandler> logger)
@@ -65,6 +66,19 @@ public sealed partial class CreateTableGroupCommandHandler(
 
         var tableGroup = TableGroup.Create(Guid.NewGuid(), command.Name, distinctTableIds);
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "TableGroup",
+            EntityId = tableGroup.Id,
+            Action = "Created",
+            PerformedByStaffId = command.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"TableGroup '{command.Name}' with {distinctTableIds.Length} tables.",
+        });
+
         var result = await tableGroupsData.CreateTableGroupAsync(tableGroup, command.OperationId, cancellationToken);
 
         if (result.WasAlreadyProcessed)
@@ -73,18 +87,6 @@ public sealed partial class CreateTableGroupCommandHandler(
         }
         else
         {
-            await auditWriter.WriteAsync(
-                new AuditLogEntry
-                {
-                    Id = Guid.NewGuid(),
-                    EntityType = "TableGroup",
-                    EntityId = result.TableGroupId,
-                    Action = "Created",
-                    PerformedByStaffId = command.PerformedByStaffId,
-                    OccurredAtUtc = timeProvider.GetUtcNow(),
-                    Details = $"TableGroup '{command.Name}' with {distinctTableIds.Length} tables.",
-                },
-                cancellationToken);
             LogTableGroupCreated(result.TableGroupId);
         }
 

@@ -16,6 +16,21 @@ namespace Mise.Modules.StaffIdentity.Infrastructure.Persistence;
 /// is what makes the Identity user, the profile row, and the ProcessedOperation all commit —
 /// or fail to commit — in the exact same SaveChangesAsync call, the same atomicity guarantee
 /// ReservationsData.CreateReservationAsync gives its own OperationId check.
+/// <para>
+/// Phase 9's AuditCompletenessInterceptor caught a real bug here, not by inspection: the type
+/// check below originally read <c>is UserOnlyStore&lt;StaffIdentityUser, StaffIdentityDbContext,
+/// Guid&gt;</c> — a 3-type-argument closure that never matches, because
+/// <c>AddEntityFrameworkStores&lt;TContext&gt;()</c> actually registers the full 6-argument
+/// <c>UserOnlyStore&lt;TUser, TContext, TKey, TUserClaim, TUserLogin, TUserToken&gt;</c> closure
+/// (defaulting the claim/login/token type arguments). The check silently failed every time,
+/// meaning <c>AutoSaveChanges</c> was never actually disabled — <c>userManager.CreateAsync</c>
+/// below saved the Identity user (and whatever else happened to be staged, including the
+/// already-staged audit entry) immediately, in its own separate, premature SaveChangesAsync call,
+/// exactly the non-atomicity this class's own doc comment claims not to have. Invisible before
+/// Phase 9 because nothing checked for it; the interceptor's "no staged entry in the final
+/// SaveChangesAsync call" failure on the *second* save (StaffUser + ProcessedOperation, now with
+/// no unflushed audit entry left to accompany it) is what surfaced it.
+/// </para>
 /// </summary>
 internal sealed partial class StaffIdentityData(
     StaffIdentityDbContext dbContext,
@@ -39,7 +54,8 @@ internal sealed partial class StaffIdentityData(
             return new RegisterStaffResult(RegisterStaffOutcome.AlreadyProcessed, resourceId);
         }
 
-        if (userStore is UserOnlyStore<StaffIdentityUser, StaffIdentityDbContext, Guid> store)
+        if (userStore is UserOnlyStore<StaffIdentityUser, StaffIdentityDbContext, Guid,
+                IdentityUserClaim<Guid>, IdentityUserLogin<Guid>, IdentityUserToken<Guid>> store)
         {
             store.AutoSaveChanges = false;
         }

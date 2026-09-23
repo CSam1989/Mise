@@ -14,7 +14,7 @@ namespace Mise.Modules.Tables.Domain;
 /// the structural, self-contained shape: a name, and at least two distinct member ids (a
 /// "group" of one table is not a group).
 /// </summary>
-public sealed class TableGroup : AggregateRoot<Guid>
+public sealed class TableGroup : AggregateRoot<Guid>, IAuditableEntity
 {
     private readonly List<Guid> _tableIds;
 

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Tables.Application.Ports;
@@ -24,7 +25,7 @@ namespace Mise.Modules.Tables.Application;
 /// </summary>
 public sealed partial class ReservationSeatedTableOccupiedHandler(
     ITablesData tablesData,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IRealtimeNotifier realtimeNotifier,
     TimeProvider timeProvider,
     ILogger<ReservationSeatedTableOccupiedHandler> logger)
@@ -50,6 +51,20 @@ public sealed partial class ReservationSeatedTableOccupiedHandler(
             return;
         }
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009) — same pattern as every *CommandHandler, applied here even though this
+        // handler isn't one (see class doc comment on why it still takes IAuditWriter).
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Table",
+            EntityId = domainEvent.TableId,
+            Action = "Occupied",
+            PerformedByStaffId = domainEvent.PerformedByStaffId,
+            OccurredAtUtc = timeProvider.GetUtcNow(),
+            Details = $"Reservation {domainEvent.ReservationId} seated.",
+        });
+
         var result = await tablesData.ChangeTableStatusAsync(
             current.Table, current.Version, Guid.NewGuid(), cancellationToken);
 
@@ -65,18 +80,6 @@ public sealed partial class ReservationSeatedTableOccupiedHandler(
                 "Table", domainEvent.TableId, result.Version, new Dictionary<string, object?> { ["status"] = result.Table.Status.ToString() });
         }
 
-        await auditWriter.WriteAsync(
-            new AuditLogEntry
-            {
-                Id = Guid.NewGuid(),
-                EntityType = "Table",
-                EntityId = domainEvent.TableId,
-                Action = "Occupied",
-                PerformedByStaffId = domainEvent.PerformedByStaffId,
-                OccurredAtUtc = timeProvider.GetUtcNow(),
-                Details = $"Reservation {domainEvent.ReservationId} seated.",
-            },
-            cancellationToken);
         LogTableOccupied(domainEvent.TableId, domainEvent.ReservationId);
 
         await realtimeNotifier.NotifyTableStatusChangedAsync(

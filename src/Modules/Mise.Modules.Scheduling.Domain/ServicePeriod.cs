@@ -15,7 +15,7 @@ namespace Mise.Modules.Scheduling.Domain;
 /// can't represent "Dinner 18:00-01:00" — the service crosses midnight. Landed in this type's
 /// first commit rather than retrofitted, since Scheduling is where ServicePeriod is born.
 /// </summary>
-public sealed class ServicePeriod : AggregateRoot<Guid>
+public sealed class ServicePeriod : AggregateRoot<Guid>, IAuditableEntity
 {
     private ServicePeriod(
         Guid id, DateOnly date, string label, TimeOnly startTime, TimeOnly endTime, bool endsNextDay, bool isClosed)

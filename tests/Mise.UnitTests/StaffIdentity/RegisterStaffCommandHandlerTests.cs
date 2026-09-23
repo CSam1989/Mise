@@ -41,7 +41,7 @@ public class RegisterStaffCommandHandlerTests
         _staffIdentityData.Verify(
             d => d.RegisterStaffAsync(It.IsAny<StaffUser>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -49,28 +49,31 @@ public class RegisterStaffCommandHandlerTests
     {
         var command = ValidCommand();
         var staffUserId = Guid.NewGuid();
+        StaffUser? passedStaffUser = null;
         _staffIdentityData
             .Setup(d => d.RegisterStaffAsync(It.IsAny<StaffUser>(), command.Username, command.Password, command.OperationId, It.IsAny<CancellationToken>()))
+            .Callback<StaffUser, string, string, Guid, CancellationToken>((staffUser, _, _, _, _) => passedStaffUser = staffUser)
             .ReturnsAsync(new RegisterStaffResult(RegisterStaffOutcome.Created, staffUserId));
 
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().Be(staffUserId);
         _auditWriter.Verify(
-            a => a.WriteAsync(
+            a => a.Stage(
                 It.Is<AuditLogEntry>(e =>
                     e.EntityType == "StaffUser"
-                    && e.EntityId == staffUserId
+                    && e.EntityId == passedStaffUser!.Id
                     && e.Action == "Created"
                     && e.PerformedByStaffId == command.PerformedByStaffId
-                    && e.OccurredAtUtc == _timeProvider.GetUtcNow()),
-                It.IsAny<CancellationToken>()),
+                    && e.OccurredAtUtc == _timeProvider.GetUtcNow())),
             Times.Once,
-            "the audit entry's timestamp must come from the injected TimeProvider, never the wall clock.");
+            "the audit entry's timestamp must come from the injected TimeProvider, never the wall clock. EntityId is " +
+            "the client-generated StaffUser.Id known before the gateway call (Phase 9/ADR-009's stage-before-mutate " +
+            "design), not the mocked gateway result's staffUserId.");
     }
 
     [Fact]
-    public async Task HandleAsync_UsernameAlreadyTaken_ThrowsFieldScopedValidationExceptionAndSkipsTheAuditWrite()
+    public async Task HandleAsync_UsernameAlreadyTaken_ThrowsFieldScopedValidationExceptionAfterStagingTheEntry()
     {
         var command = ValidCommand();
         _staffIdentityData
@@ -82,11 +85,15 @@ public class RegisterStaffCommandHandlerTests
         var exception = await act.Should().ThrowAsync<ValidationException>(
             because: "a taken username is an expected, field-scoped 400 (same shape validation failures use), not a 500.");
         exception.Which.Errors.Should().ContainSingle(e => e.PropertyName == nameof(RegisterStaffCommand.Username));
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — nothing is ever actually flushed for this path " +
+            "(RegisterStaffAsync's AutoSaveChanges=false / no SaveChangesAsync on this outcome).");
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingIdAndSkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingIdAndStagesAuditEntryRegardless()
     {
         var command = ValidCommand();
         var existingStaffUserId = Guid.NewGuid();
@@ -99,8 +106,9 @@ public class RegisterStaffCommandHandlerTests
         result.Should().Be(existingStaffUserId,
             because: "a replayed OperationId returns the id of the staff user it originally created (docs/plan.md's OperationId replay contract).");
         _auditWriter.Verify(
-            a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()),
-            Times.Never,
-            "replaying an already-processed operation must not write a second audit entry for the same effect.");
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

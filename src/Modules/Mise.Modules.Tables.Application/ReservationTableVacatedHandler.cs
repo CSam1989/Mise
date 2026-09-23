@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Mise.Modules.Reservations.Contracts;
 using Mise.Modules.Tables.Application.Ports;
@@ -16,7 +17,7 @@ namespace Mise.Modules.Tables.Application;
 public sealed partial class ReservationTableVacatedHandler(
     ITablesData tablesData,
     IReservationLookup reservationLookup,
-    IAuditWriter auditWriter,
+    [FromKeyedServices(AuditWriterKeys.Tables)] IAuditWriter auditWriter,
     IRealtimeNotifier realtimeNotifier,
     TimeProvider timeProvider,
     ILogger<ReservationTableVacatedHandler> logger)
@@ -46,6 +47,19 @@ public sealed partial class ReservationTableVacatedHandler(
             return;
         }
 
+        // Staged before the gateway call, unconditionally (AuditCompletenessInterceptor, Phase
+        // 9/ADR-009) — same pattern as ReservationSeatedTableOccupiedHandler.
+        auditWriter.Stage(new AuditLogEntry
+        {
+            Id = Guid.NewGuid(),
+            EntityType = "Table",
+            EntityId = domainEvent.TableId,
+            Action = "Released",
+            PerformedByStaffId = domainEvent.PerformedByStaffId,
+            OccurredAtUtc = now,
+            Details = $"Reservation {domainEvent.ReservationId} vacated.",
+        });
+
         var result = await tablesData.ChangeTableStatusAsync(
             current.Table, current.Version, Guid.NewGuid(), cancellationToken);
 
@@ -56,18 +70,6 @@ public sealed partial class ReservationTableVacatedHandler(
                 "Table", domainEvent.TableId, result.Version, new Dictionary<string, object?> { ["status"] = result.Table.Status.ToString() });
         }
 
-        await auditWriter.WriteAsync(
-            new AuditLogEntry
-            {
-                Id = Guid.NewGuid(),
-                EntityType = "Table",
-                EntityId = domainEvent.TableId,
-                Action = "Released",
-                PerformedByStaffId = domainEvent.PerformedByStaffId,
-                OccurredAtUtc = now,
-                Details = $"Reservation {domainEvent.ReservationId} vacated.",
-            },
-            cancellationToken);
         LogTableReleased(domainEvent.TableId, domainEvent.ReservationId);
 
         await realtimeNotifier.NotifyTableStatusChangedAsync(

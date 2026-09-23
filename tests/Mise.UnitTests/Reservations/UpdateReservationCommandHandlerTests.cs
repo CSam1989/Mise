@@ -59,7 +59,7 @@ public class UpdateReservationCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().BeNull();
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class UpdateReservationCommandHandlerTests
         result!.Version.Should().Be(2u);
         reservation.CustomerName.Should().Be("John Smith", because: "the handler must call UpdateDetails on the loaded aggregate before persisting.");
         _auditWriter.Verify(
-            a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Updated"), It.IsAny<CancellationToken>()),
+            a => a.Stage(It.Is<AuditLogEntry>(e => e.EntityType == "Reservation" && e.Action == "Updated")),
             Times.Once);
         _realtimeNotifier.Verify(
             n => n.NotifyReservationUpdatedAsync(
@@ -125,7 +125,7 @@ public class UpdateReservationCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAndSkipsTheAuditWrite()
+    public async Task HandleAsync_StaleExpectedVersion_ThrowsConcurrencyConflictExceptionAfterStagingTheEntry()
     {
         var reservation = ExistingReservation();
         var command = ValidCommand(reservation);
@@ -139,7 +139,12 @@ public class UpdateReservationCommandHandlerTests
 
         var exception = await act.Should().ThrowAsync<ConcurrencyConflictException>();
         exception.Which.CurrentVersion.Should().Be(5u);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call, so it fires even though the version mismatch (reported via the " +
+            "gateway's return value) rejects the mutation — EF rolls back the whole SaveChanges batch together on a " +
+            "real DbUpdateConcurrencyException, so nothing is ever actually flushed for this path.");
         _realtimeNotifier.Verify(
             n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -167,7 +172,7 @@ public class UpdateReservationCommandHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_SkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_StagesAuditEntryRegardlessButGatewayNeverFlushesIt()
     {
         var reservation = ExistingReservation();
         var command = ValidCommand(reservation);
@@ -179,7 +184,11 @@ public class UpdateReservationCommandHandlerTests
 
         await _sut.HandleAsync(command, CancellationToken.None);
 
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
         _realtimeNotifier.Verify(
             n => n.NotifyReservationUpdatedAsync(It.IsAny<ReservationChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }

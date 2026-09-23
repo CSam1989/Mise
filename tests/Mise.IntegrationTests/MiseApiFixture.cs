@@ -97,6 +97,12 @@ public sealed class MiseApiFixture : IAsyncLifetime
 
     public HttpClient CreateClient() => _factory!.CreateClient();
 
+    /// <summary>Phase 9's AuditCompletenessInterceptorTests needs a real scoped DbContext
+    /// directly (not through an HTTP call) to prove the interceptor fires on a save that never
+    /// staged an audit entry at all — the same DI container every endpoint request resolves
+    /// from, so the registered interceptor is exercised for real, not a hand-built DbContext.</summary>
+    public IServiceScope CreateScope() => _factory!.Services.CreateScope();
+
     public HttpClient CreateAuthenticatedClient(Guid? staffId = null, string role = "Manager")
     {
         var client = _factory!.CreateClient();

@@ -10,7 +10,7 @@ namespace Mise.Modules.StaffIdentity.Domain;
 /// fields Domain actually has invariants over. Never referenced from Infrastructure's
 /// Identity plumbing directly — StaffIdentityData is the only thing that joins the two.
 /// </summary>
-public sealed class StaffUser : AggregateRoot<Guid>
+public sealed class StaffUser : AggregateRoot<Guid>, IAuditableEntity
 {
     private StaffUser(Guid id, string fullName, StaffRole role, bool isActive) : base(id)
     {

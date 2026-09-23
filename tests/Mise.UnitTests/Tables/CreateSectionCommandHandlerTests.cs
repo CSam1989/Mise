@@ -35,7 +35,7 @@ public class CreateSectionCommandHandlerTests
         await act.Should().ThrowAsync<ValidationException>();
         _sectionsData.Verify(
             d => d.CreateSectionAsync(It.IsAny<Section>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
     }
 
     [Fact]
@@ -43,24 +43,27 @@ public class CreateSectionCommandHandlerTests
     {
         var command = ValidCommand();
         var section = Section.Create(Guid.NewGuid(), command.Name, command.DisplayOrder);
+        Section? passedSection = null;
         _sectionsData
             .Setup(d => d.CreateSectionAsync(It.IsAny<Section>(), command.OperationId, It.IsAny<CancellationToken>()))
+            .Callback<Section, Guid, CancellationToken>((s, _, _) => passedSection = s)
             .ReturnsAsync(new SectionMutationResult(section, WasAlreadyProcessed: false));
 
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().Be(section.Id);
         _auditWriter.Verify(
-            a => a.WriteAsync(
+            a => a.Stage(
                 It.Is<AuditLogEntry>(e =>
-                    e.EntityType == "Section" && e.EntityId == section.Id && e.Action == "Created"
-                    && e.PerformedByStaffId == command.PerformedByStaffId && e.OccurredAtUtc == _timeProvider.GetUtcNow()),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+                    e.EntityType == "Section" && e.EntityId == passedSection!.Id && e.Action == "Created"
+                    && e.PerformedByStaffId == command.PerformedByStaffId && e.OccurredAtUtc == _timeProvider.GetUtcNow())),
+            Times.Once,
+            "EntityId is the handler's own client-generated Section.Id, staged before the gateway call — not the " +
+            "mocked gateway result's (unrelated) section object.");
     }
 
     [Fact]
-    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingIdAndSkipsTheAuditWrite()
+    public async Task HandleAsync_OperationIdAlreadyProcessed_ReturnsExistingIdAndStagesAuditEntryRegardless()
     {
         var command = ValidCommand();
         var existingSection = Section.Create(Guid.NewGuid(), "Existing", 0);
@@ -71,6 +74,10 @@ public class CreateSectionCommandHandlerTests
         var result = await _sut.HandleAsync(command, CancellationToken.None);
 
         result.Should().Be(existingSection.Id);
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called unconditionally before the gateway call — see CreateReservationCommandHandlerTests' " +
+            "identical replay test for the full rationale.");
     }
 }

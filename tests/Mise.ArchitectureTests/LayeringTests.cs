@@ -1,3 +1,5 @@
+using Mise.SharedKernel.Infrastructure;
+
 namespace Mise.ArchitectureTests;
 
 /// <summary>
@@ -38,6 +40,29 @@ public class LayeringTests
 
         result.IsSuccessful.Should().BeTrue(
             because: "handlers depend on the slice-specific gateway port interface, never on DbContext — this is the seam that keeps the unit tier fast.");
+    }
+
+    /// <summary>
+    /// CLAUDE.md's cross-cutting infrastructure section claims Mise.SharedKernel.Infrastructure
+    /// "must stay EF-free forever" (every module's Application project references it directly
+    /// for IAuditWriter/IAuditReader — adding EF Core there would leak EF onto every Application
+    /// project transitively). Found during Phase 9 planning that nothing actually enforced this
+    /// claim at runtime — only the physical project split (no EF package reference) and review
+    /// discipline. Unlike rules 1-9, this scans a specific assembly directly rather than
+    /// ModuleAssemblies, since Mise.SharedKernel.Infrastructure isn't a per-module assembly.
+    /// </summary>
+    [Fact]
+    public void SharedKernelInfrastructure_NeverReferencesEfCore()
+    {
+        var result = Types.InAssembly(typeof(IAuditWriter).Assembly)
+            .Should()
+            .NotHaveDependencyOnAny("Microsoft.EntityFrameworkCore")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            because: "Mise.SharedKernel.Infrastructure must stay EF-free forever — every module's Application project " +
+            "references it directly for IAuditWriter/IAuditReader, so any EF Core dependency here would leak onto " +
+            "every Application project transitively, exactly what the module boundary table forbids.");
     }
 
     [Fact]

@@ -10,7 +10,7 @@ namespace Mise.Modules.Tables.Domain;
 /// DeactivateSectionCommandHandler (mirrors RegisterStaffCommandHandler's taken-username
 /// check — a field-scoped ValidationException from the handler, not a Domain invariant here).
 /// </summary>
-public sealed class Section : AggregateRoot<Guid>
+public sealed class Section : AggregateRoot<Guid>, IAuditableEntity
 {
     private Section(Guid id, string name, int displayOrder, bool isActive) : base(id)
     {

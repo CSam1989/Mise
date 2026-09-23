@@ -44,7 +44,7 @@ public class ReservationSeatedTableOccupiedHandlerTests
 
         table.Status.Should().Be(TableStatus.Occupied);
         _auditWriter.Verify(
-            a => a.WriteAsync(It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Occupied"), It.IsAny<CancellationToken>()),
+            a => a.Stage(It.Is<AuditLogEntry>(e => e.EntityType == "Table" && e.EntityId == table.Id && e.Action == "Occupied")),
             Times.Once);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(
@@ -65,7 +65,7 @@ public class ReservationSeatedTableOccupiedHandlerTests
         _tablesData.Verify(
             d => d.ChangeTableStatusAsync(It.IsAny<Table>(), It.IsAny<uint>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never,
             "a replayed event that already applied cleanly must not force a redundant write.");
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -79,13 +79,13 @@ public class ReservationSeatedTableOccupiedHandlerTests
         var act = () => _sut.HandleAsync(domainEvent, CancellationToken.None);
 
         await act.Should().NotThrowAsync(because: "a genuinely impossible race (the table existed moments earlier in the same request) is logged, not retried.");
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(a => a.Stage(It.IsAny<AuditLogEntry>()), Times.Never);
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task HandleAsync_GatewayReportsVersionMismatch_ThrowsConcurrencyConflictException()
+    public async Task HandleAsync_GatewayReportsVersionMismatch_ThrowsConcurrencyConflictExceptionAfterStagingTheEntry()
     {
         var table = ExistingTable();
         var domainEvent = EventFor(table.Id);
@@ -98,7 +98,10 @@ public class ReservationSeatedTableOccupiedHandlerTests
 
         await act.Should().ThrowAsync<ConcurrencyConflictException>(
             because: "unlike the not-found case, this is transient and retry-recoverable — it must propagate so a client retry can heal it.");
-        _auditWriter.Verify(a => a.WriteAsync(It.IsAny<AuditLogEntry>(), It.IsAny<CancellationToken>()), Times.Never);
+        _auditWriter.Verify(
+            a => a.Stage(It.IsAny<AuditLogEntry>()),
+            Times.Once,
+            "Stage is called before the gateway call — nothing is ever actually flushed for this path.");
         _realtimeNotifier.Verify(
             n => n.NotifyTableStatusChangedAsync(It.IsAny<TableStatusChangedNotification>(), It.IsAny<CancellationToken>()), Times.Never);
     }
