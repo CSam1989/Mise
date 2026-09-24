@@ -1,0 +1,20 @@
+@namespace Mise.UI.Components.Primitives
+@inject IStringLocalizer<UiStrings> L
+
+<span class="status-dot-wrap @StatusStyle.CssClass(Status)" data-testid="@TestIds.StatusDot" data-status="@Status">
+    <span class="status-dot" aria-hidden="@(ShowLabel ? "true" : null)" role="@(ShowLabel ? null : "img")" aria-label="@(ShowLabel ? null : StatusStyle.Label(L, Status))"></span>
+    @if (ShowLabel)
+    {
+        <span>@StatusStyle.Label(L, Status)</span>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public Enum Status { get; set; } = default!;
+
+    [Parameter]
+    public bool ShowLabel { get; set; }
+
+    protected override void OnParametersSet() => StatusStyle.EnsureSupported(Status);
+}

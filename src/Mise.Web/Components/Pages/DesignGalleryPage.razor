@@ -1,0 +1,23 @@
+@page "/design"
+@attribute [Authorize]
+@using Mise.UI.Components.Gallery
+@inject IHostEnvironment HostEnvironment
+@inject NavigationManager NavigationManager
+
+<PageTitle>Design gallery</PageTitle>
+
+@* The HTTP-level gate in Program.cs can't see in-circuit navigation, so the page checks too. *@
+@if (HostEnvironment.IsDevelopment())
+{
+    <DesignGallery />
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (!HostEnvironment.IsDevelopment())
+        {
+            NavigationManager.NotFound();
+        }
+    }
+}

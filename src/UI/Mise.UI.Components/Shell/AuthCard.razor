@@ -1,0 +1,26 @@
+@namespace Mise.UI.Components.Shell
+
+<section class="mise-card auth-card" aria-labelledby="auth-card-title" data-testid="@TestIds.AuthCard">
+    <div>
+        @if (!string.IsNullOrEmpty(Eyebrow))
+        {
+            <div class="mise-eyebrow">@Eyebrow</div>
+        }
+        <h1 id="auth-card-title" class="auth-title" tabindex="-1" data-testid="@TitleTestId">@Title</h1>
+    </div>
+    @ChildContent
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = default!;
+
+    [Parameter]
+    public string? Eyebrow { get; set; }
+
+    [Parameter]
+    public string TitleTestId { get; set; } = TestIds.PageTitle;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

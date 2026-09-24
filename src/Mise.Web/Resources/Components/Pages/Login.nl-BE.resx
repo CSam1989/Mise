@@ -62,7 +62,7 @@
     <value>Aanmelden</value>
   </data>
   <data name="Heading" xml:space="preserve">
-    <value>Aanmelden</value>
+    <value>Aanmelden bij Mise</value>
   </data>
   <data name="Username" xml:space="preserve">
     <value>Gebruikersnaam</value>
@@ -78,5 +78,8 @@
   </data>
   <data name="UnexpectedError" xml:space="preserve">
     <value>Er ging iets mis bij het aanmelden. Probeer het opnieuw.</value>
+  </data>
+  <data name="BackOffice" xml:space="preserve">
+    <value>Backoffice</value>
   </data>
 </root>

@@ -11,6 +11,8 @@
          targets (Phase 14) have no ASP.NET Core shared framework on the device, so
          FrameworkReference fails there with NETSDK1073 (docs/plan.md's MAUI gotcha). -->
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
+    <PackageReference Include="Microsoft.Extensions.Localization" />
     <!-- ILogger<T>/[LoggerMessage] (CLAUDE.md's Logging standard) — pure BCL abstractions,
          restores fine on MAUI targets too, unlike Microsoft.AspNetCore.Components.Web above. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
@@ -18,6 +20,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Mise.UI.Abstractions\Mise.UI.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mise.Client.UnitTests" />
   </ItemGroup>
 
 </Project>

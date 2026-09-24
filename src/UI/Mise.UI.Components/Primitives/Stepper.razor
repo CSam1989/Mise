@@ -1,0 +1,42 @@
+@namespace Mise.UI.Components.Primitives
+@inject IStringLocalizer<UiStrings> L
+
+<div class="stepper" role="group" aria-label="@Label" data-testid="@TestId">
+    <button type="button" class="stepper-btn" aria-label="@L["StepperDecrease", Label]"
+            disabled="@(Disabled || Value <= Min)" data-testid="@TestIds.StepperDecrease" @onclick="() => ChangeAsync(-Step)">−</button>
+    <output class="stepper-value" aria-live="polite" data-testid="@TestIds.StepperValue">@Value</output>
+    <button type="button" class="stepper-btn" aria-label="@L["StepperIncrease", Label]"
+            disabled="@(Disabled || Value >= Max)" data-testid="@TestIds.StepperIncrease" @onclick="() => ChangeAsync(Step)">+</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string TestId { get; set; } = default!;
+
+    [Parameter]
+    public int Value { get; set; }
+
+    [Parameter]
+    public EventCallback<int> ValueChanged { get; set; }
+
+    [Parameter]
+    public int Min { get; set; } = 1;
+
+    [Parameter]
+    public int Max { get; set; } = int.MaxValue;
+
+    [Parameter]
+    public int Step { get; set; } = 1;
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private Task ChangeAsync(int delta)
+    {
+        var next = Math.Clamp(Value + delta, Min, Max);
+        return next == Value ? Task.CompletedTask : ValueChanged.InvokeAsync(next);
+    }
+}

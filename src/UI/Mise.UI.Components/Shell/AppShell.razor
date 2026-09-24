@@ -1,0 +1,36 @@
+@namespace Mise.UI.Components.Shell
+@inject IStringLocalizer<UiStrings> L
+
+<div class="app-shell">
+    @* <base href="/"> would resolve a bare #fragment to "/#…" and navigate away, so the link moves focus itself. *@
+    <a class="skip-link" href="#main-content" data-testid="@TestIds.SkipToContent" @onclick="SkipToMainAsync" @onclick:preventDefault="true">@L["SkipToContent"]</a>
+    <TopBar RestaurantName="@RestaurantName" TimeZone="TimeZone" />
+    <div class="shell-body">
+        <SideNav Entries="Entries" SignOutHref="@SignOutHref" />
+        <main id="main-content" class="shell-content" tabindex="-1" data-testid="@TestIds.MainContent" @ref="_main">
+            @ChildContent
+        </main>
+    </div>
+    <ToastHost />
+</div>
+
+@code {
+    private ElementReference _main;
+
+    [Parameter, EditorRequired]
+    public string RestaurantName { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public TimeZoneInfo TimeZone { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string SignOutHref { get; set; } = default!;
+
+    [Parameter]
+    public IReadOnlyList<NavEntry> Entries { get; set; } = MiseNavigation.Entries;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private async Task SkipToMainAsync() => await _main.FocusAsync();
+}

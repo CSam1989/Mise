@@ -1,0 +1,46 @@
+@namespace Mise.UI.Components.Shell
+@inject IStringLocalizer<UiStrings> L
+
+<nav class="side-nav" aria-label="@L["MainNavigation"]" data-testid="@TestIds.SideNav">
+    <div class="nav-items">
+        @foreach (var entry in _main)
+        {
+            @RenderLink(entry)
+        }
+        @if (_manager.Count > 0)
+        {
+            <AuthorizeView Policy="@StaffPolicies.Manager">
+                <Authorized>
+                    <div class="nav-group" role="group" aria-labelledby="nav-group-manager-heading" data-testid="@TestIds.NavGroupManager">
+                        <div id="nav-group-manager-heading" class="nav-group-heading">@L["NavManagerGroup"]</div>
+                        @foreach (var entry in _manager)
+                        {
+                            @RenderLink(entry)
+                        }
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+        }
+    </div>
+    <a class="nav-signout" href="@SignOutHref" data-testid="@TestIds.SignOut">@L["SignOut"]</a>
+</nav>
+
+@code {
+    private IReadOnlyList<NavEntry> _main = [];
+    private IReadOnlyList<NavEntry> _manager = [];
+
+    [Parameter]
+    public IReadOnlyList<NavEntry> Entries { get; set; } = MiseNavigation.Entries;
+
+    [Parameter, EditorRequired]
+    public string SignOutHref { get; set; } = default!;
+
+    protected override void OnParametersSet()
+    {
+        _main = [.. Entries.Where(e => e.Group == NavGroup.Main)];
+        _manager = [.. Entries.Where(e => e.Group == NavGroup.Manager)];
+    }
+
+    private RenderFragment RenderLink(NavEntry entry) =>
+        @<NavLink class="nav-link-item" ActiveClass="nav-link-active" href="@entry.Href" Match="entry.Match" data-testid="@entry.TestId">@L[entry.LabelKey]</NavLink>;
+}

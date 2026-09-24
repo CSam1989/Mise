@@ -1,0 +1,12 @@
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    font-size: .6875rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--mise-status-border);
+    background: var(--mise-status-bg);
+    color: var(--mise-status-fg);
+    white-space: nowrap;
+}

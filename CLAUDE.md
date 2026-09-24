@@ -849,6 +849,78 @@ doesn't exist yet (a later phase's concern).
 - **`ConflictRecord.SubmittedPayloadJson` redaction stays deferred** — that type doesn't exist
   until the offline/conflict phases.
 
+## Shared UI foundation (Phase 10.0 — theme, primitives, shell, localization)
+
+Phase 10 builds the screens every earlier phase deferred, one screen family per step
+(`docs/UI-plan.md`), stopping for review after each. 10.0 lays the shared foundation in
+`Mise.UI.Components`, so the Phase 14 MAUI head inherits all of it unchanged.
+
+- **Global interactive routing, `prerender: false`.** `App.razor` renders `<Routes>`/`<HeadOutlet>`
+  with `InteractiveServerRenderMode(prerender: false)` unless the page carries
+  `[ExcludeFromInteractiveRouting]` (`Login`, `Error` — both need a real `HttpContext`). Per-page
+  `@rendermode` is gone: with per-page interactivity a *layout* is always static SSR, so the
+  shell's clock, toast host and drawers could never be interactive. Pages no longer declare a
+  render mode at all. The old prerender gotcha under Conventions still explains why it's `false`.
+- **Styling:** Bootstrap 5.3 (only `bootstrap.min.css`) and self-hosted Instrument Sans/Serif woff2
+  live in the RCL's `wwwroot` (served as `_content/Mise.UI.Components/...`) — no CDN, so an offline
+  tablet still renders. `css/mise-theme.css` overrides Bootstrap's CSS variables and defines only
+  what Bootstrap can't: the 5+5 status colour sets (`.mise-status-{status}`), avatar palette,
+  shared Drawer/Modal chrome (`.mise-overlay`). Component CSS goes in `.razor.css` isolation files. Three mockup colours were
+  darkened to pass WCAG AA 4.5:1 (`--mise-muted`, Cancelled fg, avatar 2) — keep that when adding tokens.
+- **`TestIds` (RCL, public)** is the single selector vocabulary for bUnit *and* Playwright. A new
+  `data-testid` goes there first; tests reference the constant, never a literal.
+- **Localization:** RCL strings go through `IStringLocalizer<UiStrings>`, backed by
+  `Resources/UiStrings.resx` + `UiStrings.nl-BE.resx`, keys named after the mockup's `T.en`.
+  `[assembly: ResourceLocation("Resources")]`/`[RootNamespace]` pin the lookup so it doesn't depend
+  on a host's `ResourcesPath` — which is why the RCL references the concrete
+  `Microsoft.Extensions.Localization` (those attributes don't exist in `.Abstractions`).
+  `UiStringsResourceTests` fails if nl-BE is missing a key or a `{0}` placeholder. Both cultures
+  ship now; only the culture switcher waits for Phase 11.
+- **Shell:** `AppShell` (`TopBar` + `SideNav` + `<main>` + `ToastHost`) and `AuthFrame`/`AuthCard`
+  are RCL components; `Mise.Web`'s `MainLayout`/`AuthLayout` only pass `RestaurantOptions`
+  (`Restaurant:Name`, `Restaurant:TimeZoneId`, validated on start). **Only screens that exist get
+  a nav entry** (`MiseNavigation.Entries`) — each step adds its own; the Manager group renders
+  inside `AuthorizeView Policy="Manager"` and only if it has entries. Mise.Web registers the same
+  `FloorStaff`/`Manager` policies as the API (`StaffPolicies`/`StaffRoles` in Abstractions).
+  Chips/pills with no data yet (service period, connection, badges, EN/NL) are deliberately absent.
+- **Overlays** (`Drawer`/`Modal`, shared `OverlayBase`): Escape and backdrop close, focus moves to
+  the panel on open, and two `tabindex=0` `.visually-hidden` sentinels bounce focus back in — a
+  JS-free focus trap, one server round-trip per wrap.
+  Returning focus to the trigger on close is not done yet (needs JS; revisit with 10.2's module).
+- **`/design` gallery** (`Gallery/DesignGallery`, hosted by `DesignGalleryPage`) is Development-only:
+  outside Development a `MapWhen` returns 404 *before* auth (`DesignGalleryGateTests`), and the page
+  itself calls `NavigationManager.NotFound()` — in-circuit navigation never reaches that middleware. It's never in
+  the nav. Its developer-facing headings are intentionally not localized.
+- **Two gotchas found by E2E, not by inspection:** a `string` component parameter given a bare
+  value is a literal (`RestaurantName="RestaurantName"` rendered the word "RestaurantName") — always
+  `="@Value"`; and with `<base href="/">` a `href="#fragment"` resolves to `/#fragment` and routes
+  to Home, so the skip link handles its click and calls `FocusAsync` itself.
+- **`Login`'s `ReturnUrl` must pass `RedirectHttpResult.IsLocalUrl`** (anything else falls back to
+  `/`; `RedirectToLogin` sends a relative path) — before 10.0 it was an open redirect.
+- **`SegmentedControl` is a toggle-button group (`aria-pressed`), not a radiogroup** — a radiogroup
+  owes arrow-key roving focus; revisit if a screen needs that.
+- **E2E tests use the Page Object Model** (`tests/Mise.E2ETests/`), per Playwright's own guidance:
+  - `Pages/` holds one class per screen (`LoginPage`, `ReservationsPage`, `DesignGalleryPage`, each
+    with its `Path` and a `GotoAsync`) and `Pages/Components/` the pieces several screens share
+    (`AppShell`, `Dialog`, `Stepper`). **Only page objects create locators**, always
+    `GetByTestId(TestIds.X)` (Playwright's test-id attribute is set to `data-testid` explicitly in
+    `PlaywrightBrowser`). Page objects expose locators and *actions*; `Expect(...)` assertions stay in
+    the test. Waiting for a navigation to settle (e.g. `LoginPage.SignInAsync` waiting for the shell)
+    is synchronization, not an assertion, and is fine inside a page object.
+  - Roles and accessible names are asserted *separately* with `ToHaveRoleAsync`/
+    `ToHaveAccessibleNameAsync` where they matter (landmarks, dialogs, alerts, grouped controls) —
+    Playwright prefers role locators, but this UI is localized, so roles are verified, not selected by.
+  - Tests derive from `Infrastructure/BrowserTest`, which opens isolated contexts via
+    `OpenPageAsync(storageState, locale, width, height)` (default `en`, 1280×800, `BaseURL` set so
+    page objects navigate by relative path) and saves a screenshot + trace per context to
+    `playwright-traces/` on teardown. Several contexts per test are supported (10.1's live-update test).
+  - **Signed-in state is reused, per role:** `MiseE2EFixture` signs `E2EUsers.Manager` and
+    `E2EUsers.FloorStaff` in once through the real login page and exposes `ManagerSession`/
+    `FloorStaffSession` (Playwright storage state). Only tests *about* signing in drive the form.
+    `E2EUsers.SignOut` exists because Mise.Web's server-side token cache is keyed by staff id —
+    signing a shared user out would remove the API token behind every other test's saved session.
+    Any future test that signs out, changes a password, or deactivates a user needs its own seeded user.
+
 ## No mediator library (ADR-005)
 
 Cross-module domain events go through a ~40-line hand-rolled `IDomainEventPublisher` /
@@ -967,7 +1039,8 @@ the exception overload) and show the caller something short of the truth.** Neve
   CI can filter.
 - `data-testid` is the **only** selector vocabulary in bUnit and Playwright —
   `{noun}-{id}` for rows, `btn-{action}` for buttons. Never select by visible text (the UI is
-  localized nl-BE/en; text is not stable).
+  localized nl-BE/en; text is not stable). Values live in `Mise.UI.Components.TestIds`; Playwright reaches
+  them only through page objects via `GetByTestId` (see "Shared UI foundation (Phase 10.0)").
 - Integration tests assert on raw `JsonDocument`, never typed DTOs, so the wire contract is
   locked against an accidental silent change.
 - **Never `global using Bunit;`** in the bUnit test project. Add `using Bunit;` locally per

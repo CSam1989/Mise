@@ -1,0 +1,83 @@
+@namespace Mise.UI.Components.Gallery
+@inject ToastService Toasts
+@inject IStringLocalizer<UiStrings> L
+
+@* Development-only tooling: section headings are developer-facing and intentionally not localized. *@
+<div class="gallery" data-testid="@TestIds.DesignGallery">
+    <PageHeader Title="Design gallery" Subtitle="Phase 10 primitives, rendered with the live theme">
+        <Actions>
+            <button type="button" class="btn btn-primary" data-testid="@TestIds.GalleryShowToast" @onclick="ShowToast">Show toast</button>
+        </Actions>
+    </PageHeader>
+
+    <section class="mise-card gallery-section">
+        <h2>Table status</h2>
+        <div class="gallery-row">
+            @foreach (var status in Enum.GetValues<TableStatus>())
+            {
+                <StatusPill Status="status" />
+            }
+        </div>
+        <div class="gallery-row">
+            @foreach (var status in Enum.GetValues<TableStatus>())
+            {
+                <StatusDot Status="status" ShowLabel="true" />
+            }
+        </div>
+    </section>
+
+    <section class="mise-card gallery-section">
+        <h2>Reservation status</h2>
+        <div class="gallery-row">
+            @foreach (var status in Enum.GetValues<ReservationStatus>())
+            {
+                <StatusPill Status="status" />
+            }
+        </div>
+    </section>
+
+    <section class="mise-card gallery-section">
+        <h2>Controls</h2>
+        <div class="gallery-row">
+            <SegmentedControl TValue="string" Options="_sections" @bind-Value="_section" AriaLabel="Section" TestId="@TestIds.GallerySegmented" />
+            <Stepper Label="Party" @bind-Value="_party" Min="1" Max="12" TestId="@TestIds.GalleryStepper" />
+        </div>
+        <div class="gallery-row">
+            <button type="button" class="btn btn-primary" data-testid="@TestIds.GalleryOpenDrawer" @onclick="() => _drawerOpen = true">Open drawer</button>
+            <button type="button" class="btn btn-outline-secondary" data-testid="@TestIds.GalleryOpenModal" @onclick="() => _modalOpen = true">Open modal</button>
+        </div>
+    </section>
+
+    <section class="gallery-section-plain">
+        <EmptyState Title="No reservations found" Body="Try another day or search term." />
+    </section>
+</div>
+
+<Drawer IsOpen="_drawerOpen" OnClose="() => _drawerOpen = false" Title="M12 · Main room" TestId="@TestIds.GalleryDrawer">
+    <StatusPill Status="TableStatus.Reserved" />
+</Drawer>
+
+<Modal IsOpen="_modalOpen" OnClose="() => _modalOpen = false" Title="New reservation" TestId="@TestIds.GalleryModal">
+    <ChildContent>
+        <Stepper Label="Party" @bind-Value="_party" Min="1" Max="12" TestId="stepper-gallery-modal" />
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary flex-fill" @onclick="() => _modalOpen = false">@L["Close"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    private static readonly IReadOnlyList<SegmentedOption<string>> _sections =
+    [
+        new("all", "all", "All"),
+        new("main", "main", "Main room"),
+        new("patio", "patio", "Patio"),
+    ];
+
+    private string _section = "all";
+    private int _party = 2;
+    private bool _drawerOpen;
+    private bool _modalOpen;
+
+    private void ShowToast() => Toasts.Show($"Party of {_party} · {_section}");
+}

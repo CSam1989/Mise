@@ -1,0 +1,32 @@
+@namespace Mise.UI.Components.Primitives
+@typeparam TValue
+
+<div class="segmented" role="group" aria-label="@AriaLabel" data-testid="@TestId">
+    @foreach (var option in Options)
+    {
+        var selected = EqualityComparer<TValue>.Default.Equals(option.Value, Value);
+        <button type="button" aria-pressed="@(selected ? "true" : "false")"
+                class="segment @(selected ? "segment-selected" : null)"
+                data-testid="@TestIds.Segment(option.Key)" @onclick="() => SelectAsync(option.Value)">@option.Label</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<SegmentedOption<TValue>> Options { get; set; } = [];
+
+    [Parameter]
+    public TValue? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<TValue> ValueChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public string AriaLabel { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string TestId { get; set; } = default!;
+
+    private Task SelectAsync(TValue value) =>
+        EqualityComparer<TValue>.Default.Equals(value, Value) ? Task.CompletedTask : ValueChanged.InvokeAsync(value);
+}

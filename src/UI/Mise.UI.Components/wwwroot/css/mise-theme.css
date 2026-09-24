@@ -1,0 +1,172 @@
+@font-face {
+    font-family: 'Instrument Sans';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('../fonts/instrument-sans-latin.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Instrument Serif';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../fonts/instrument-serif-latin.woff2') format('woff2');
+}
+
+:root {
+    --mise-navy: #1d4371;
+    --mise-navy-rgb: 29, 67, 113;
+    --mise-navy-hover: #062d59;
+    --mise-ink: #1a2030;
+    --mise-muted: #636a77;
+    --mise-nav-fg: #4b5563;
+    --mise-canvas: #eef0f4;
+    --mise-surface: #fff;
+    --mise-border: #e2e5ea;
+    --mise-input-border: #d7dae0;
+    --mise-hover: #f0f2f6;
+    --mise-nav-active-bg: #eef0f6;
+
+    --mise-topbar-bg: #1c2333;
+    --mise-topbar-chip: #2a3348;
+    --mise-topbar-border: #3a4258;
+    --mise-topbar-fg: #c9cedb;
+    --mise-topbar-muted: #9aa4bd;
+
+    --mise-danger: #c1392b;
+    --mise-overlay: rgba(20, 25, 40, .35);
+    --mise-shadow-card: 0 24px 60px -28px rgba(20, 30, 60, .35);
+    --mise-shadow-toast: 0 10px 30px -10px rgba(0, 0, 0, .4);
+    --mise-radius: 9px;
+    --mise-radius-lg: 14px;
+    --mise-sidebar-width: 212px;
+    --mise-topbar-height: 52px;
+    --mise-touch: 44px;
+
+    --bs-body-font-family: 'Instrument Sans', system-ui, sans-serif;
+    --bs-body-font-size: .8125rem;
+    --bs-body-color: var(--mise-ink);
+    --bs-body-bg: var(--mise-surface);
+    --bs-primary: var(--mise-navy);
+    --bs-primary-rgb: var(--mise-navy-rgb);
+    --bs-link-color: var(--mise-navy);
+    --bs-link-color-rgb: var(--mise-navy-rgb);
+    --bs-link-hover-color: var(--mise-navy-hover);
+    --bs-border-color: var(--mise-border);
+    --bs-border-radius: var(--mise-radius);
+    --bs-border-radius-lg: var(--mise-radius-lg);
+    --bs-secondary-color: var(--mise-muted);
+    --bs-focus-ring-color: rgba(var(--mise-navy-rgb), .35);
+}
+
+body {
+    background-color: var(--mise-canvas);
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--mise-navy);
+    --bs-btn-border-color: var(--mise-navy);
+    --bs-btn-hover-bg: var(--mise-navy-hover);
+    --bs-btn-hover-border-color: var(--mise-navy-hover);
+    --bs-btn-active-bg: var(--mise-navy-hover);
+    --bs-btn-active-border-color: var(--mise-navy-hover);
+    --bs-btn-disabled-bg: var(--mise-navy);
+    --bs-btn-disabled-border-color: var(--mise-navy);
+}
+
+.btn {
+    --bs-btn-font-weight: 600;
+    --bs-btn-font-size: .8125rem;
+    --bs-btn-border-radius: var(--mise-radius);
+    min-height: 40px;
+}
+
+.form-control, .form-select {
+    --bs-border-color: var(--mise-input-border);
+    border-radius: 8px;
+    padding: .6875rem .75rem;
+    font-size: .875rem;
+}
+
+.form-label {
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--mise-nav-fg);
+    margin-bottom: 6px;
+}
+
+.mise-wordmark {
+    font-family: 'Instrument Serif', serif;
+    font-weight: 400;
+}
+
+.mise-eyebrow {
+    font-size: .6875rem;
+    color: var(--mise-muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+}
+
+.mise-card {
+    background: var(--mise-surface);
+    border: 1px solid var(--mise-border);
+    border-radius: var(--mise-radius-lg);
+}
+
+/* Shared Drawer/Modal chrome; each keeps only its own placement in its .razor.css. */
+.mise-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    background: var(--mise-overlay);
+}
+
+.mise-overlay-close {
+    width: var(--mise-touch);
+    height: var(--mise-touch);
+    padding: 0;
+    background-size: .75rem;
+}
+
+h1:focus {
+    outline: none;
+}
+
+/* Status colour sets (mockup values; Cancelled fg darkened from #8b90a0 to pass WCAG AA 4.5:1). */
+.mise-status-available { --mise-status-bg: #e7f5ee; --mise-status-fg: #1a5c40; --mise-status-border: #bfe3d1; --mise-status-dot: #1f8a5f; }
+.mise-status-reserved { --mise-status-bg: #fdf1de; --mise-status-fg: #7a5308; --mise-status-border: #f0d9ad; --mise-status-dot: #b5790a; }
+.mise-status-occupied { --mise-status-bg: #e8ecf7; --mise-status-fg: #2f4b8f; --mise-status-border: #c6cfe8; --mise-status-dot: #2f4b8f; }
+.mise-status-needscleaning { --mise-status-bg: #f3e9f8; --mise-status-fg: #6d3a8a; --mise-status-border: #ddc2e8; --mise-status-dot: #8a4fae; }
+.mise-status-blocked { --mise-status-bg: #eceef0; --mise-status-fg: #3a3d44; --mise-status-border: #c9ccd2; --mise-status-dot: #4b4f58; }
+
+.mise-status-confirmed { --mise-status-bg: #e8ecf7; --mise-status-fg: #2f4b8f; --mise-status-border: #c6cfe8; --mise-status-dot: #2f4b8f; }
+.mise-status-seated { --mise-status-bg: #e7f5ee; --mise-status-fg: #1a5c40; --mise-status-border: #bfe3d1; --mise-status-dot: #1f8a5f; }
+.mise-status-completed { --mise-status-bg: #eceef0; --mise-status-fg: #4b5563; --mise-status-border: #d7dae0; --mise-status-dot: #4b5563; }
+.mise-status-noshow { --mise-status-bg: #fbe3e0; --mise-status-fg: #a3341f; --mise-status-border: #f1c3bb; --mise-status-dot: #a3341f; }
+.mise-status-cancelled { --mise-status-bg: #f4f5f7; --mise-status-fg: #686d7d; --mise-status-border: #e2e5ea; --mise-status-dot: #8b90a0; }
+
+.mise-avatar-0 { background: #4773ab; }
+.mise-avatar-1 { background: #3b825f; }
+.mise-avatar-2 { background: #9c602a; }
+.mise-avatar-3 { background: #82558d; }
+.mise-avatar-4 { background: #176f7c; }
+.mise-avatar-5 { background: #a45859; }
+
+@keyframes mise-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes mise-slide-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+    }
+}

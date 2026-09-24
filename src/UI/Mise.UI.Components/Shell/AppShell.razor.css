@@ -1,0 +1,48 @@
+.app-shell {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--mise-canvas);
+}
+
+.skip-link {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    z-index: 1100;
+    padding: 10px 14px;
+    border-radius: var(--mise-radius);
+    background: var(--mise-surface);
+    color: var(--mise-navy);
+    font-weight: 600;
+}
+
+.skip-link:focus {
+    top: 8px;
+}
+
+.shell-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.shell-content {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    padding: 22px 28px;
+    outline: none;
+}
+
+@media (max-width: 991.98px) {
+    .shell-content {
+        padding: 18px 20px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .shell-body {
+        flex-direction: column;
+    }
+}

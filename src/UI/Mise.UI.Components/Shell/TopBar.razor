@@ -1,0 +1,33 @@
+@namespace Mise.UI.Components.Shell
+@inject IStringLocalizer<UiStrings> L
+
+<header class="top-bar" data-testid="@TestIds.TopBar">
+    <div class="brand">
+        <span class="mise-wordmark wordmark">Mise</span>
+        <span class="restaurant" data-testid="@TestIds.RestaurantName">@RestaurantName</span>
+    </div>
+    <div class="shell-meta">
+        <ShellClock TimeZone="TimeZone" />
+    </div>
+    <div class="spacer"></div>
+    <AuthorizeView>
+        <Authorized>
+            @{ var me = StaffIdentityView.From(context.User); }
+            <div class="user-block" data-testid="@TestIds.UserBlock">
+                <span class="avatar mise-avatar-@me.AvatarIndex" aria-hidden="true" data-testid="@TestIds.UserAvatar">@me.Initials</span>
+                <span class="user-text">
+                    <span class="user-name" title="@me.FullName" data-testid="@TestIds.CurrentUser">@me.ShortName</span>
+                    <span class="user-role" data-testid="@TestIds.CurrentUserRole">@L[me.RoleLabelKey]</span>
+                </span>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+</header>
+
+@code {
+    [Parameter, EditorRequired]
+    public string RestaurantName { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public TimeZoneInfo TimeZone { get; set; } = default!;
+}

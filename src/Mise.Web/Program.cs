@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Localization;
 using Mise.UI.Abstractions;
+using Mise.UI.Components;
+using Mise.Web;
 using Mise.Web.Components;
 using Mise.Web.Services;
 
@@ -37,13 +39,23 @@ builder.Services
         options.LoginPath = "/login";
         options.AccessDeniedPath = "/login";
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(StaffPolicies.FloorStaff, policy => policy.RequireRole(StaffRoles.FloorStaff, StaffRoles.Manager))
+    .AddPolicy(StaffPolicies.Manager, policy => policy.RequireRole(StaffRoles.Manager));
 builder.Services.AddCascadingAuthenticationState();
 
-// nl-BE is the charter's default (NFR-08); en is the other supported culture. Only Login's
-// heading is actually translated yet (Phase 3 wires the mechanism — CLAUDE.md's "content
-// can come later" — full UI coverage is Phase 11).
+// nl-BE is the charter's default (NFR-08); en is the other supported culture. The RCL's own
+// strings (IStringLocalizer<UiStrings>) ship both cultures; the culture switcher is Phase 11.
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
+builder.Services
+    .AddOptions<RestaurantOptions>()
+    .BindConfiguration(RestaurantOptions.SectionName)
+    .ValidateDataAnnotations()
+    .Validate(options => TimeZoneInfo.TryFindSystemTimeZoneById(options.TimeZoneId, out _), "Restaurant:TimeZoneId is not a known time zone.")
+    .ValidateOnStart();
+
+builder.Services.AddMiseUiComponents();
 
 // The signed-in staff member's API token, held server-side only — never a cookie or
 // localStorage value (ADR-004). Singleton: it must outlive any one circuit so a reconnect
@@ -67,6 +79,15 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
+
+    // The /design gallery (and the Preview* fakes it will host) never exists outside Development.
+    app.MapWhen(
+        context => context.Request.Path.StartsWithSegments("/design"),
+        branch => branch.Run(context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return Task.CompletedTask;
+        }));
 }
 
 app.UseHttpsRedirection();

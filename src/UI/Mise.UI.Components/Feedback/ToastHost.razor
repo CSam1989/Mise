@@ -1,0 +1,19 @@
+@namespace Mise.UI.Components.Feedback
+@implements IDisposable
+@inject ToastService Toasts
+@inject IStringLocalizer<UiStrings> L
+
+<div class="toast-region" role="status" aria-live="polite" aria-label="@L["Notifications"]" data-testid="@TestIds.ToastRegion">
+    @if (Toasts.Current is { } toast)
+    {
+        <div class="mise-toast mise-toast-@toast.Kind.ToString().ToLowerInvariant()" data-testid="@TestIds.Toast" data-kind="@toast.Kind">@toast.Text</div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Toasts.Changed += HandleChanged;
+
+    private void HandleChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Toasts.Changed -= HandleChanged;
+}

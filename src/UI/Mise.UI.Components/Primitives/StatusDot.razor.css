@@ -1,0 +1,16 @@
+.status-dot-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .75rem;
+    color: var(--mise-muted);
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--mise-status-bg);
+    border: 1.5px solid var(--mise-status-border);
+    flex-shrink: 0;
+}

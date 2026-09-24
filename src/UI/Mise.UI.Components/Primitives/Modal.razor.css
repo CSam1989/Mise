@@ -1,0 +1,46 @@
+.overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-panel {
+    width: 100%;
+    max-height: 100%;
+    background: var(--mise-surface);
+    border-radius: var(--mise-radius-lg);
+    box-shadow: var(--mise-shadow-card);
+    display: flex;
+    flex-direction: column;
+    animation: mise-fade-in .2s ease;
+    outline: none;
+}
+
+.modal-panel-small { max-width: 400px; }
+.modal-panel-medium { max-width: 520px; }
+.modal-panel-large { max-width: 720px; }
+
+.modal-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 22px 8px;
+}
+
+.modal-panel-title {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.modal-panel-body {
+    overflow: auto;
+    padding: 8px 22px 18px;
+}
+
+.modal-panel-footer {
+    display: flex;
+    gap: 10px;
+    padding: 0 22px 22px;
+}

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Mise.E2ETests.Infrastructure;
 
 namespace Mise.E2ETests;
 
@@ -12,7 +13,7 @@ namespace Mise.E2ETests;
 /// it. The in-memory TestServer WebApplicationFactory normally substitutes cannot be
 /// targeted by Playwright at all — there is no real socket to connect to.
 /// </summary>
-public sealed class PlaywrightWebAppFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public sealed class PlaywrightWebAppFixture : WebApplicationFactory<Program>, IAsyncLifetime, IBrowserHost
 {
     private IPlaywright? _playwright;
 
@@ -29,8 +30,7 @@ public sealed class PlaywrightWebAppFixture : WebApplicationFactory<Program>, IA
         var addresses = Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
         BaseUrl = addresses!.Addresses.First();
 
-        _playwright = await Playwright.CreateAsync();
-        Browser = await _playwright.Chromium.LaunchAsync();
+        (_playwright, Browser) = await PlaywrightBrowser.LaunchAsync();
     }
 
     public override async ValueTask DisposeAsync()

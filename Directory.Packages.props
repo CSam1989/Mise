@@ -137,4 +137,12 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
   </ItemGroup>
+
+  <!-- Phase 10 — shared RCL: AuthorizeView for the role-aware shell; the concrete Localization
+       package (not just .Abstractions) because [assembly: ResourceLocation]/[RootNamespace]
+       live there, which pins the RCL's resx location regardless of the host's ResourcesPath. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Localization" Version="10.0.12" />
+  </ItemGroup>
 </Project>

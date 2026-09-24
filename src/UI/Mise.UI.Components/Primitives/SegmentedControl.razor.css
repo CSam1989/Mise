@@ -1,0 +1,33 @@
+.segmented {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--mise-surface);
+    border: 1px solid var(--mise-border);
+    border-radius: var(--mise-radius);
+    padding: 3px;
+}
+
+.segment {
+    min-height: 36px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--mise-nav-fg);
+    font-size: .75rem;
+    font-weight: 600;
+}
+
+.segment:hover:not(.segment-selected) {
+    background: var(--mise-hover);
+}
+
+.segment:focus-visible {
+    outline: 2px solid var(--mise-navy);
+    outline-offset: 1px;
+}
+
+.segment-selected {
+    background: var(--mise-topbar-bg);
+    color: #fff;
+}

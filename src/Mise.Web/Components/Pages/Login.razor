@@ -1,17 +1,17 @@
 @page "/login"
-@* No @rendermode: sign-in must call HttpContext.SignInAsync, which needs a real HTTP
-   response to write the auth cookie into — impossible from an interactive SignalR circuit
-   (CLAUDE.md's Blazor rendermode gotcha applies in reverse here: where Reservations.razor
-   needs interactivity from the start, this page must deliberately stay static SSR so its
-   form POST is a normal HTTP request, exactly the built-in Blazor Identity template's own
-   Login page shape). *@
+@* Static SSR on purpose: SignInAsync needs a real HTTP response to write the auth cookie. *@
+@attribute [ExcludeFromInteractiveRouting]
+@layout Layout.AuthLayout
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.AspNetCore.Http.HttpResults
 @using Microsoft.Extensions.Localization
 @using Microsoft.Extensions.Logging
 @using Mise.UI.Abstractions
+@using Mise.UI.Components
+@using Mise.UI.Components.Shell
 @using Mise.Web.Services
 @inject IStaffAuthClient StaffAuthClient
 @inject IStaffSessionTokenCache TokenCache
@@ -21,28 +21,28 @@
 
 <PageTitle>@Localizer["Title"]</PageTitle>
 
-<h1 data-testid="login-heading">@Localizer["Heading"]</h1>
+<AuthCard Eyebrow="@Localizer["BackOffice"]" Title="@Localizer["Heading"]" TitleTestId="@TestIds.LoginHeading">
+    <EditForm Model="Input" FormName="login" OnValidSubmit="HandleLoginAsync" method="post" class="d-flex flex-column gap-3">
+        <DataAnnotationsValidator />
 
-<EditForm Model="Input" FormName="login" OnValidSubmit="HandleLoginAsync" method="post">
-    <DataAnnotationsValidator />
+        <div>
+            <label class="form-label" for="input-username">@Localizer["Username"]</label>
+            <InputText id="input-username" class="form-control" autocomplete="username" data-testid="@TestIds.InputUsername" @bind-Value="Input.Username" />
+        </div>
 
-    <div class="form-field">
-        <label for="input-username">@Localizer["Username"]</label>
-        <InputText id="input-username" data-testid="input-username" @bind-Value="Input.Username" />
-    </div>
+        <div>
+            <label class="form-label" for="input-password">@Localizer["Password"]</label>
+            <InputText id="input-password" type="password" class="form-control" autocomplete="current-password" data-testid="@TestIds.InputPassword" @bind-Value="Input.Password" />
+        </div>
 
-    <div class="form-field">
-        <label for="input-password">@Localizer["Password"]</label>
-        <InputText id="input-password" type="password" data-testid="input-password" @bind-Value="Input.Password" />
-    </div>
+        @if (_errorMessage is not null)
+        {
+            <p class="alert alert-danger py-2 mb-0" data-testid="@TestIds.LoginError" role="alert">@_errorMessage</p>
+        }
 
-    @if (_errorMessage is not null)
-    {
-        <p data-testid="error-login" role="alert">@_errorMessage</p>
-    }
-
-    <button type="submit" data-testid="btn-login">@Localizer["SignIn"]</button>
-</EditForm>
+        <button type="submit" class="btn btn-primary w-100 mt-1" data-testid="@TestIds.LoginSubmit">@Localizer["SignIn"]</button>
+    </EditForm>
+</AuthCard>
 
 @code {
     [CascadingParameter]
@@ -69,15 +69,7 @@
         }
         catch (Exception ex)
         {
-            // A transport failure (API unreachable, an unexpected 5xx) is not "wrong
-            // credentials" — showing InvalidCredentials here would send someone chasing a
-            // password reset for an outage. Static SSR means an unhandled exception here
-            // would otherwise hit ASP.NET Core's generic /Error page instead of staying on
-            // this form at all.
-            //
-            // Plain instance call, not [LoggerMessage] — see ReservationForm.razor.cs's
-            // identical comment: that generator needs a field, Blazor's [Inject] only
-            // populates a property, and this isn't a hot path either way.
+            // An outage is not "wrong credentials" — a distinct message avoids a pointless password reset.
             Logger.LogError(ex, "Unexpected failure signing in.");
             _errorMessage = Localizer["UnexpectedError"];
             return;
@@ -89,8 +81,7 @@
             return;
         }
 
-        // Only claims go into the cookie — the raw API token never reaches the browser
-        // (ADR-004). It's cached server-side instead, keyed by this same staff id.
+        // Only claims go into the cookie; the API token stays server-side (ADR-004).
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, result.StaffUserId.ToString()),
@@ -102,7 +93,8 @@
 
         TokenCache.Store(result.StaffUserId, result.Token, result.ExpiresAtUtc);
 
-        NavigationManager.NavigateTo(ReturnUrl ?? "/", forceLoad: true);
+        // Local paths only — anything else would make /login an open redirect.
+        NavigationManager.NavigateTo(RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/", forceLoad: true);
     }
 
     private sealed class LoginFormModel

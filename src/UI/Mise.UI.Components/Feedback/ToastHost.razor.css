@@ -1,0 +1,24 @@
+.toast-region {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1090;
+    pointer-events: none;
+}
+
+.mise-toast {
+    background: var(--mise-topbar-bg);
+    color: #fff;
+    font-size: .8125rem;
+    font-weight: 600;
+    padding: 11px 18px;
+    border-radius: var(--mise-radius);
+    box-shadow: var(--mise-shadow-toast);
+    white-space: nowrap;
+    animation: mise-fade-in .2s ease;
+}
+
+.mise-toast-error {
+    border-left: 4px solid var(--mise-danger);
+}

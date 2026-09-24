@@ -1,0 +1,22 @@
+@namespace Mise.UI.Components.Primitives
+@inherits OverlayBase
+
+@if (IsOpen)
+{
+    <div class="mise-overlay overlay" data-testid="@TestIds.Backdrop" @onclick="CloseAsync">
+        <span class="visually-hidden" tabindex="0" data-testid="@TestIds.FocusSentinelStart" @onfocus="FocusPanelAsync"></span>
+        <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="@TitleId" tabindex="-1"
+               data-testid="@TestId" @ref="Panel" @onclick:stopPropagation="true" @onkeydown="HandleKeyDownAsync">
+            <header class="drawer-header">
+                <h2 id="@TitleId" class="drawer-title" data-testid="@TestIds.OverlayTitle">@Title</h2>
+                <button type="button" class="btn-close mise-overlay-close" aria-label="@L["Close"]" data-testid="@TestIds.Close" @onclick="CloseAsync"></button>
+            </header>
+            <div class="drawer-body">@ChildContent</div>
+            @if (Footer is not null)
+            {
+                <footer class="drawer-footer" data-testid="@TestIds.OverlayFooter">@Footer</footer>
+            }
+        </aside>
+        <span class="visually-hidden" tabindex="0" data-testid="@TestIds.FocusSentinelEnd" @onfocus="FocusPanelAsync"></span>
+    </div>
+}

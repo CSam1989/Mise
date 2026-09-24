@@ -1,0 +1,11 @@
+@namespace Mise.UI.Components.Primitives
+@inject IStringLocalizer<UiStrings> L
+
+<span class="status-pill @StatusStyle.CssClass(Status)" data-testid="@TestIds.StatusPill" data-status="@Status">@StatusStyle.Label(L, Status)</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public Enum Status { get; set; } = default!;
+
+    protected override void OnParametersSet() => StatusStyle.EnsureSupported(Status);
+}

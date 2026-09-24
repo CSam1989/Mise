@@ -62,7 +62,7 @@
     <value>Sign in</value>
   </data>
   <data name="Heading" xml:space="preserve">
-    <value>Sign in</value>
+    <value>Sign in to Mise</value>
   </data>
   <data name="Username" xml:space="preserve">
     <value>Username</value>
@@ -78,5 +78,8 @@
   </data>
   <data name="UnexpectedError" xml:space="preserve">
     <value>Something went wrong signing in. Please try again.</value>
+  </data>
+  <data name="BackOffice" xml:space="preserve">
+    <value>Back office</value>
   </data>
 </root>

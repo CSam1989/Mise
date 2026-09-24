@@ -1,0 +1,42 @@
+.overlay {
+    justify-content: flex-end;
+}
+
+.drawer {
+    width: 420px;
+    max-width: 92%;
+    height: 100%;
+    background: var(--mise-surface);
+    display: flex;
+    flex-direction: column;
+    animation: mise-slide-in .2s ease;
+    outline: none;
+}
+
+.drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--mise-border);
+}
+
+.drawer-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.drawer-body {
+    flex: 1;
+    overflow: auto;
+    padding: 18px 22px;
+}
+
+.drawer-footer {
+    display: flex;
+    gap: 10px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--mise-border);
+}

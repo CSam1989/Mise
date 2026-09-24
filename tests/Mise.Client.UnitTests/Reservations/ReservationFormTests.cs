@@ -21,11 +21,11 @@ public class ReservationFormTests : BunitContext
         var cut = Render<ReservationForm>(parameters => parameters
             .Add(p => p.ReservationsClient, client.Object));
 
-        cut.Find("[data-testid=input-customer-name]").Input("Jane Doe");
-        cut.Find("[data-testid=input-customer-phone]").Input("+32 470 00 00 00");
-        cut.Find("[data-testid=btn-submit-reservation]").Click();
+        cut.Find($"[data-testid={TestIds.InputCustomerName}]").Input("Jane Doe");
+        cut.Find($"[data-testid={TestIds.InputCustomerPhone}]").Input("+32 470 00 00 00");
+        cut.Find($"[data-testid={TestIds.SubmitReservation}]").Click();
 
-        cut.Find("[data-testid=error-party-size]").TextContent.Should().Be(
+        cut.Find($"[data-testid={TestIds.ErrorPartySize}]").TextContent.Should().Be(
             "Party size is required and must be more than 0.",
             because: "the mockup's exact copy is what the UI shows — mirrors CreateReservationCommandValidator's message.");
         client.Verify(
@@ -47,10 +47,10 @@ public class ReservationFormTests : BunitContext
             .Add(p => p.ReservationsClient, client.Object)
             .Add(p => p.OnCreated, EventCallback.Factory.Create<ReservationDto>(this, dto => created = dto)));
 
-        cut.Find("[data-testid=input-customer-name]").Input("Jane Doe");
-        cut.Find("[data-testid=input-customer-phone]").Input("+32 470 00 00 00");
-        cut.Find("[data-testid=input-party-size]").Input("4");
-        cut.Find("[data-testid=btn-submit-reservation]").Click();
+        cut.Find($"[data-testid={TestIds.InputCustomerName}]").Input("Jane Doe");
+        cut.Find($"[data-testid={TestIds.InputCustomerPhone}]").Input("+32 470 00 00 00");
+        cut.Find($"[data-testid={TestIds.InputPartySize}]").Input("4");
+        cut.Find($"[data-testid={TestIds.SubmitReservation}]").Click();
 
         client.Verify(
             c => c.CreateAsync(
@@ -74,11 +74,11 @@ public class ReservationFormTests : BunitContext
         var cut = Render<ReservationForm>(parameters => parameters
             .Add(p => p.ReservationsClient, client.Object));
 
-        cut.Find("[data-testid=input-customer-name]").Input("Jane Doe");
-        cut.Find("[data-testid=input-party-size]").Input("4");
-        cut.Find("[data-testid=btn-submit-reservation]").Click();
+        cut.Find($"[data-testid={TestIds.InputCustomerName}]").Input("Jane Doe");
+        cut.Find($"[data-testid={TestIds.InputPartySize}]").Input("4");
+        cut.Find($"[data-testid={TestIds.SubmitReservation}]").Click();
 
-        cut.Find("[data-testid=error-customer-phone]").TextContent.Should().Be("CustomerPhone is required.",
+        cut.Find($"[data-testid={TestIds.ErrorCustomerPhone}]").TextContent.Should().Be("CustomerPhone is required.",
             because: "a 400 ValidationProblem's field errors must render next to the field they name.");
     }
 
@@ -95,12 +95,12 @@ public class ReservationFormTests : BunitContext
             .Add(p => p.ReservationsClient, client.Object)
             .Add(p => p.OnCreated, EventCallback.Factory.Create<ReservationDto>(this, _ => onCreatedCalled = true)));
 
-        cut.Find("[data-testid=input-customer-name]").Input("Jane Doe");
-        cut.Find("[data-testid=input-customer-phone]").Input("+32 470 00 00 00");
-        cut.Find("[data-testid=input-party-size]").Input("4");
-        cut.Find("[data-testid=btn-submit-reservation]").Click();
+        cut.Find($"[data-testid={TestIds.InputCustomerName}]").Input("Jane Doe");
+        cut.Find($"[data-testid={TestIds.InputCustomerPhone}]").Input("+32 470 00 00 00");
+        cut.Find($"[data-testid={TestIds.InputPartySize}]").Input("4");
+        cut.Find($"[data-testid={TestIds.SubmitReservation}]").Click();
 
-        cut.Find("[data-testid=error-unexpected]").TextContent.Should().Be(
+        cut.Find($"[data-testid={TestIds.ErrorUnexpected}]").TextContent.Should().Be(
             "Something went wrong creating the reservation. Please try again.",
             because: "a transport failure must show a generic message, never the raw exception, and must not crash the component.");
         onCreatedCalled.Should().BeFalse();

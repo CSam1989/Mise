@@ -1,0 +1,18 @@
+@namespace Mise.UI.Components.Shell
+@inject IStringLocalizer<UiStrings> L
+
+<div class="auth-frame" data-testid="@TestIds.AuthFrame">
+    <div class="auth-brand">
+        <span class="mise-wordmark auth-wordmark">Mise</span>
+        <span class="auth-restaurant" data-testid="@TestIds.RestaurantName">@RestaurantName · @L["AppSub"]</span>
+    </div>
+    <main class="auth-content">@ChildContent</main>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string RestaurantName { get; set; } = default!;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

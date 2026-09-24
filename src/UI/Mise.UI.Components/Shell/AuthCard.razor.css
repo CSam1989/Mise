@@ -1,0 +1,16 @@
+.auth-card {
+    width: 380px;
+    max-width: 100%;
+    padding: 32px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: var(--mise-shadow-card);
+    animation: mise-fade-in .3s ease;
+}
+
+.auth-title {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    margin: 3px 0 0;
+}

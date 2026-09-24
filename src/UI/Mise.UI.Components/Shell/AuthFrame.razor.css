@@ -1,0 +1,34 @@
+.auth-frame {
+    min-height: 100vh;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 72px 20px 32px;
+    background: var(--mise-canvas);
+}
+
+.auth-brand {
+    position: absolute;
+    top: 18px;
+    left: 22px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.auth-wordmark {
+    font-size: 1.375rem;
+    color: var(--mise-ink);
+}
+
+.auth-restaurant {
+    font-size: .75rem;
+    color: var(--mise-muted);
+}
+
+.auth-content {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}

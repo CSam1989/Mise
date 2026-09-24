@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppSub" xml:space="preserve">
+    <value>Zaal</value>
+  </data>
+  <data name="NavReservations" xml:space="preserve">
+    <value>Reservaties</value>
+  </data>
+  <data name="NavManagerGroup" xml:space="preserve">
+    <value>Manager</value>
+  </data>
+  <data name="SignOut" xml:space="preserve">
+    <value>Afmelden</value>
+  </data>
+  <data name="RoleManager" xml:space="preserve">
+    <value>Manager</value>
+  </data>
+  <data name="RoleFloorStaff" xml:space="preserve">
+    <value>Zaalpersoneel</value>
+  </data>
+  <data name="MainNavigation" xml:space="preserve">
+    <value>Hoofdnavigatie</value>
+  </data>
+  <data name="SkipToContent" xml:space="preserve">
+    <value>Naar de hoofdinhoud</value>
+  </data>
+  <data name="Notifications" xml:space="preserve">
+    <value>Meldingen</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Sluiten</value>
+  </data>
+  <data name="StepperDecrease" xml:space="preserve">
+    <value>{0} verlagen</value>
+  </data>
+  <data name="StepperIncrease" xml:space="preserve">
+    <value>{0} verhogen</value>
+  </data>
+  <data name="Status_Available" xml:space="preserve">
+    <value>Vrij</value>
+  </data>
+  <data name="Status_Reserved" xml:space="preserve">
+    <value>Gereserveerd</value>
+  </data>
+  <data name="Status_Occupied" xml:space="preserve">
+    <value>Bezet</value>
+  </data>
+  <data name="Status_NeedsCleaning" xml:space="preserve">
+    <value>Af te ruimen</value>
+  </data>
+  <data name="Status_Blocked" xml:space="preserve">
+    <value>Geblokkeerd</value>
+  </data>
+  <data name="Status_Confirmed" xml:space="preserve">
+    <value>Bevestigd</value>
+  </data>
+  <data name="Status_Seated" xml:space="preserve">
+    <value>Geplaatst</value>
+  </data>
+  <data name="Status_Completed" xml:space="preserve">
+    <value>Afgerond</value>
+  </data>
+  <data name="Status_NoShow" xml:space="preserve">
+    <value>No-show</value>
+  </data>
+  <data name="Status_Cancelled" xml:space="preserve">
+    <value>Geannuleerd</value>
+  </data>
+  <data name="UnhandledError" xml:space="preserve">
+    <value>Er ging iets mis. Herlaad de pagina om verder te werken.</value>
+  </data>
+  <data name="Reload" xml:space="preserve">
+    <value>Herladen</value>
+  </data>
+  <data name="Dismiss" xml:space="preserve">
+    <value>Sluiten</value>
+  </data>
+</root>

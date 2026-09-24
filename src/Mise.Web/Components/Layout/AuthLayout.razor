@@ -1,0 +1,8 @@
+@inherits LayoutComponentBase
+@using Microsoft.Extensions.Options
+@using Mise.UI.Components.Shell
+@inject IOptions<RestaurantOptions> Restaurant
+
+<AuthFrame RestaurantName="@Restaurant.Value.Name">
+    @Body
+</AuthFrame>

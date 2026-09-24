@@ -1,0 +1,33 @@
+@namespace Mise.UI.Components.Shell
+@implements IDisposable
+@inject TimeProvider TimeProvider
+
+<span class="shell-chip" data-testid="@TestIds.ShellDate">@_now.ToString("ddd d MMM")</span>
+<time class="shell-clock" datetime="@_now.ToString("HH:mm")" data-testid="@TestIds.ShellClock">@_now.ToString("HH:mm")</time>
+
+@code {
+    private DateTimeOffset _now;
+    private ITimer? _timer;
+
+    [Parameter, EditorRequired]
+    public TimeZoneInfo TimeZone { get; set; } = default!;
+
+    protected override void OnParametersSet() => _now = LocalNow();
+
+    protected override void OnInitialized()
+    {
+        var utcNow = TimeProvider.GetUtcNow();
+        var untilNextMinute = TimeSpan.FromMinutes(1) - TimeSpan.FromTicks(utcNow.Ticks % TimeSpan.TicksPerMinute);
+        _timer = TimeProvider.CreateTimer(_ => _ = InvokeAsync(Tick), null, untilNextMinute, TimeSpan.FromMinutes(1));
+    }
+
+    private void Tick()
+    {
+        _now = LocalNow();
+        StateHasChanged();
+    }
+
+    private DateTimeOffset LocalNow() => TimeZoneInfo.ConvertTime(TimeProvider.GetUtcNow(), TimeZone);
+
+    public void Dispose() => _timer?.Dispose();
+}

@@ -1,0 +1,24 @@
+@namespace Mise.UI.Components.Primitives
+
+<div class="empty-state" data-testid="@TestIds.EmptyState">
+    <p class="empty-state-title" data-testid="@TestIds.EmptyStateTitle">@Title</p>
+    @if (!string.IsNullOrEmpty(Body))
+    {
+        <p class="empty-state-body" data-testid="@TestIds.EmptyStateBody">@Body</p>
+    }
+    @if (Action is not null)
+    {
+        <div class="empty-state-action">@Action</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = default!;
+
+    [Parameter]
+    public string? Body { get; set; }
+
+    [Parameter]
+    public RenderFragment? Action { get; set; }
+}

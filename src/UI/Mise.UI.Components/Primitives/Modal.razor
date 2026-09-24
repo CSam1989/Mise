@@ -1,0 +1,27 @@
+@namespace Mise.UI.Components.Primitives
+@inherits OverlayBase
+
+@if (IsOpen)
+{
+    <div class="mise-overlay overlay" data-testid="@TestIds.Backdrop" @onclick="CloseAsync">
+        <span class="visually-hidden" tabindex="0" data-testid="@TestIds.FocusSentinelStart" @onfocus="FocusPanelAsync"></span>
+        <section class="modal-panel modal-panel-@Size.ToString().ToLowerInvariant()" role="dialog" aria-modal="true" aria-labelledby="@TitleId" tabindex="-1"
+                 data-testid="@TestId" @ref="Panel" @onclick:stopPropagation="true" @onkeydown="HandleKeyDownAsync">
+            <header class="modal-panel-header">
+                <h2 id="@TitleId" class="modal-panel-title" data-testid="@TestIds.OverlayTitle">@Title</h2>
+                <button type="button" class="btn-close mise-overlay-close" aria-label="@L["Close"]" data-testid="@TestIds.Close" @onclick="CloseAsync"></button>
+            </header>
+            <div class="modal-panel-body">@ChildContent</div>
+            @if (Footer is not null)
+            {
+                <footer class="modal-panel-footer" data-testid="@TestIds.OverlayFooter">@Footer</footer>
+            }
+        </section>
+        <span class="visually-hidden" tabindex="0" data-testid="@TestIds.FocusSentinelEnd" @onfocus="FocusPanelAsync"></span>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public ModalSize Size { get; set; } = ModalSize.Medium;
+}

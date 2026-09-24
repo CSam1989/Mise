@@ -1,0 +1,26 @@
+@namespace Mise.UI.Components.Primitives
+
+<header class="page-header" data-testid="@TestIds.PageHeader">
+    <div>
+        <h1 class="page-title" tabindex="-1" data-testid="@TestIds.PageTitle">@Title</h1>
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <p class="page-subtitle" data-testid="@TestIds.PageSubtitle">@Subtitle</p>
+        }
+    </div>
+    @if (Actions is not null)
+    {
+        <div class="page-actions" data-testid="@TestIds.PageActions">@Actions</div>
+    }
+</header>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = default!;
+
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+}
